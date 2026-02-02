@@ -1,10 +1,14 @@
-FROM nginx:alpine
+FROM node:20-alpine
 
-# Copy static assets to Nginx html folder
-COPY . /usr/share/nginx/html
+# Install simple static file server
+RUN npm install -g serve
 
-# Expose port 80
-EXPOSE 80
+# Create app directory
+WORKDIR /app
 
-# Start Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Copy all files
+COPY . .
+
+# Start server on the port defined by Railway ($PORT)
+# If $PORT is not set, default to 3000
+CMD serve -s . -l tcp://0.0.0.0:${PORT:-3000}
