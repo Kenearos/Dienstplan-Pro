@@ -52,6 +52,13 @@ class DienstplanApp {
         // Settings
         document.getElementById('export-csv-btn').addEventListener('click', () => this.exportCSV());
         document.getElementById('export-report-btn').addEventListener('click', () => this.exportBonusReport());
+        
+        // NEW: Email Report Generator
+        const emailBtn = document.getElementById('email-report-btn');
+        if (emailBtn) {
+            emailBtn.addEventListener('click', () => this.generateEmailReport());
+        }
+
         document.getElementById('export-btn').addEventListener('click', () => this.exportData());
         document.getElementById('import-btn').addEventListener('click', () => this.importData());
         document.getElementById('clear-all-btn').addEventListener('click', () => this.clearAllData());
@@ -417,6 +424,122 @@ class DienstplanApp {
         return card;
     }
 
+    // --- NEW: EMAIL REPORT GENERATOR ---
+    generateEmailReport() {
+        // Need to grab current selected calc month/year
+        const monthSelect = document.getElementById('calc-month-select');
+        const yearSelect = document.getElementById('calc-year-select');
+        const month = parseInt(monthSelect.value);
+        const year = parseInt(yearSelect.value);
+
+        const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
+        const results = this.calculator.calculateAllEmployees(employeeDuties);
+        
+        const monthName = this.getMonthName(month);
+
+        let reportHtml = `<h3>Dienstplan Abrechnung ${monthName} ${year}</h3>`;
+        
+        // 1. Copy-Paste Table
+        reportHtml += `<div style="background: #ffffff; padding: 15px; border: 1px solid #ddd;">`;
+        reportHtml += `<p><strong>Übersicht:</strong></p>`;
+        reportHtml += `<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 13px; border-color: #ccc;">`;
+        reportHtml += `<tr style="background-color: #f2f2f2;">
+            <th style="text-align: left;">Mitarbeiter</th>
+            <th style="text-align: center;">WE-Dienste</th>
+            <th style="text-align: center;">Abzug</th>
+            <th style="text-align: left;">Bemerkung</th>
+        </tr>`;
+
+        let textBlocks = [];
+
+        if (results && Object.keys(results).length > 0) {
+            Object.keys(results).forEach(name => {
+                const res = results[name];
+                const totalWe = res.qualifyingDays || 0;
+                const deducted = res.qualifyingDaysDeducted || 0;
+                const threshold = res.thresholdReached;
+                
+                let statusText = "";
+                let rowStyle = "";
+                let blockText = "";
+
+                if (threshold) {
+                    statusText = "Variante 3 (Bonus)";
+                    rowStyle = "";
+                    blockText = `Herr/Frau ${name} erreicht ${this.formatNumber(totalWe)} Wochenenddienste, es werden ihm/ihr ${this.formatNumber(deducted)} Wochenenddienste nicht angerechnet und somit erreicht er/sie Variante 3.`;
+                } else if (totalWe > 0) {
+                    statusText = "Bonus nicht erreicht";
+                    rowStyle = "background-color: #fff0f0;";
+                    blockText = `Mitarbeiter ${name} erreicht das Bonussystem nicht (${this.formatNumber(totalWe)} WE-Dienste < 2.0).`;
+                } else {
+                    statusText = "-";
+                    rowStyle = "color: #999;";
+                }
+
+                reportHtml += `<tr style="${rowStyle}">
+                    <td>${name}</td>
+                    <td style="text-align: center;">${this.formatNumber(totalWe)}</td>
+                    <td style="text-align: center;">${this.formatNumber(deducted)}</td>
+                    <td>${statusText}</td>
+                </tr>`;
+
+                if (blockText) textBlocks.push(blockText);
+            });
+        } else {
+             reportHtml += `<tr><td colspan="4" style="text-align:center;color:#666;">Keine Daten für diesen Monat</td></tr>`;
+        }
+
+        reportHtml += `</table></div>`;
+        
+        // 2. Text Blocks
+        reportHtml += `<br><h4>Text-Bausteine für E-Mail (Copy & Paste):</h4>`;
+        reportHtml += `<div id="text-blocks-container" style="background: #f9f9f9; padding: 15px; border: 1px solid #ccc; font-family: Arial, sans-serif; font-size: 14px;">`;
+        if (textBlocks.length > 0) {
+            textBlocks.forEach(text => {
+                reportHtml += `<p style="margin-bottom: 8px; padding: 8px; background: white; border: 1px solid #eee;">${text}</p>`;
+            });
+        } else {
+            reportHtml += `<p class="text-muted">Keine relevanten Dienste.</p>`;
+        }
+        reportHtml += `</div>`;
+
+        // Modal Logic
+        const modal = document.createElement('div');
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:1000;';
+        modal.innerHTML = `
+            <div style="background:white;padding:20px;border-radius:8px;max-width:800px;width:90%;max-height:90vh;overflow-y:auto;position:relative;box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <button id="close-modal-btn" style="position:absolute;top:10px;right:10px;border:none;background:none;font-size:24px;cursor:pointer;">&times;</button>
+                <h2 style="margin-top:0;">📧 E-Mail Text-Generator</h2>
+                <p class="text-muted">Kopieren Sie diesen Inhalt direkt in Ihre E-Mail an die Verwaltung.</p>
+                <div id="report-content">
+                    ${reportHtml}
+                </div>
+                <div style="margin-top:20px;text-align:right;border-top: 1px solid #eee; padding-top: 15px;">
+                    <button id="copy-btn" class="btn btn-primary" style="font-size: 1.1em;">📋 Alles markieren & kopieren</button>
+                    <button id="close-btn-bottom" class="btn btn-secondary">Schließen</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        modal.querySelector('#close-modal-btn').onclick = () => modal.remove();
+        modal.querySelector('#close-btn-bottom').onclick = () => modal.remove();
+        
+        modal.querySelector('#copy-btn').onclick = () => {
+            const range = document.createRange();
+            range.selectNode(modal.querySelector('#report-content'));
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            try {
+                document.execCommand('copy');
+                this.showToast('✅ Bericht kopiert! (Einfügen mit Strg+V)', 'success');
+            } catch (err) {
+                this.showToast('❌ Fehler beim Kopieren.', 'error');
+            }
+            window.getSelection().removeAllRanges();
+        };
+    }
+
     /**
      * Export data as JSON
      */
@@ -742,27 +865,16 @@ class DienstplanApp {
             const thresholdReached = we_total >= this.calculator.MIN_QUALIFYING_DAYS - 0.0001;
             
             let bonus = 0;
-            let deductedFrom = '';
-            let deduct_fr = 0;
-            let deduct_other = 0;
             
             if (thresholdReached) {
                 const wt_pay = data.wt * this.calculator.RATE_NORMAL;
                 let deduct = this.calculator.DEDUCTION_AMOUNT;
-                deduct_fr = Math.min(deduct, data.we_fr);
-                deduct_other = Math.max(0, deduct - deduct_fr);
+                let deduct_fr = Math.min(deduct, data.we_fr);
+                let deduct_other = Math.max(0, deduct - deduct_fr);
                 const paid_fr = Math.max(0, data.we_fr - deduct_fr);
                 const paid_other = Math.max(0, data.we_other - deduct_other);
                 const we_pay = (paid_fr + paid_other) * this.calculator.RATE_WEEKEND;
                 bonus = wt_pay + we_pay;
-                
-                if (deduct_fr > 0 && deduct_other > 0) {
-                    deductedFrom = 'Freitag und weiterer WE-Tag';
-                } else if (deduct_fr > 0) {
-                    deductedFrom = 'Freitag';
-                } else {
-                    deductedFrom = 'WE-Tag (Sa/So/Feiertag)';
-                }
             }
             
             totalBonus += bonus;
@@ -787,10 +899,6 @@ class DienstplanApp {
             }
             employeeNotes.push(note);
             
-            // Track remaining deduction for each duty (Friday first, then others)
-            let remainingDeductFr = deduct_fr;
-            let remainingDeductOther = deduct_other;
-            
             // Build table row
             html += `
         <tr>
@@ -806,47 +914,12 @@ class DienstplanApp {
                 } else {
                     let cellContent = '';
                     dayDuties.forEach(duty => {
-                        const dateStr = duty.date.getDate() + '.';
                         const shareStr = duty.share === 0.5 ? '½' : '';
-                        const isFriday = duty.date.getDay() === 5;
-                        const isHoliday = this.holidayProvider.isHoliday(duty.date);
-                        const isDayBefore = this.holidayProvider.isDayBeforeHoliday(duty.date);
-                        const extraInfo = isHoliday ? ' (Feiertag)' : isDayBefore ? ' (Vor Feiertag)' : '';
-                        
-                        // Determine if this duty is deducted
-                        let deductedAmount = 0;
-                        let paidAmount = duty.share;
-                        
-                        if (thresholdReached && duty.isQual) {
-                            if (isFriday && remainingDeductFr > 0) {
-                                deductedAmount = Math.min(duty.share, remainingDeductFr);
-                                remainingDeductFr -= deductedAmount;
-                            } else if (!isFriday && remainingDeductOther > 0) {
-                                deductedAmount = Math.min(duty.share, remainingDeductOther);
-                                remainingDeductOther -= deductedAmount;
-                            }
-                            paidAmount = duty.share - deductedAmount;
-                        }
-                        
-                        const isFullyDeducted = thresholdReached && duty.isQual && deductedAmount >= duty.share - 0.0001;
-                        
-                        // Calculate euro amount only for paid portion
-                        const rate = duty.isQual ? this.calculator.RATE_WEEKEND : this.calculator.RATE_NORMAL;
-                        const amountStr = `${Math.round(paidAmount * rate)}€`;
-                        
                         // Determine tag style
                         let tag = duty.isQual ? 'we-tag' : 'wt-tag';
-                        if (isFullyDeducted) {
-                            tag = 'deducted-tag';
-                        }
                         
                         // Build cell content
-                        cellContent += `<span class="${tag}">${shareStr}X${extraInfo}</span><br>`;
-                        
-                        // Only show euro amount for non-deducted or partially-paid days
-                        if (!isFullyDeducted && (paidAmount > 0 || !duty.isQual)) {
-                            cellContent += `<small>${amountStr}</small><br>`;
-                        }
+                        cellContent += `<span class="${tag}">${shareStr}X</span><br>`;
                     });
                     html += `<td class="duty-cell">${cellContent}</td>`;
                 }
@@ -966,6 +1039,15 @@ class DienstplanApp {
         setTimeout(() => {
             toast.classList.remove('show');
         }, 3000);
+    }
+
+    formatNumber(num) {
+        return num.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+    }
+
+    getMonthName(monthIndex) {
+        const names = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
+        return names[monthIndex - 1];
     }
 }
 
