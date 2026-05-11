@@ -717,6 +717,37 @@ runner.test('Parse: leerer Name wird verworfen', (t) => {
 });
 
 // ============================================================================
+// ImageImporter Tests - Levenshtein (Feature A)
+// ============================================================================
+
+runner.test('Levenshtein: identische Strings = 0', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('max mustermann', 'max mustermann'), 0, 'Identisch');
+});
+
+runner.test('Levenshtein: leerer String', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('', 'abc'), 3, '0 vs 3 Zeichen');
+    t.assertEqual(importer.levenshtein('abc', ''), 3, '3 vs 0 Zeichen');
+    t.assertEqual(importer.levenshtein('', ''), 0, 'Beide leer');
+});
+
+runner.test('Levenshtein: 1 Substitution', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('abc', 'abd'), 1, '1 Subst');
+});
+
+runner.test('Levenshtein: 1 Insertion', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('max mustermann', 'max mustermannn'), 1, '1 zusaetzliches n');
+});
+
+runner.test('Levenshtein: 2 Distanz', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('mueller', 'mueler'), 1, 'ein l weniger');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
