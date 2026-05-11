@@ -474,6 +474,60 @@ runner.test('Edge Case: Dienst am 29. Februar (Schaltjahr)', (t) => {
 });
 
 // ============================================================================
+// Storage Tests - API Key / Model (Feature A)
+// ============================================================================
+
+runner.test('Storage API Key: setApiKey/getApiKey round-trip', (t) => {
+    const storage = new DataStorage();
+    storage.clearApiKey();
+    storage.setApiKey('sk-or-test-12345');
+    t.assertEqual(storage.getApiKey(), 'sk-or-test-12345', 'Key sollte gespeichert sein');
+    storage.clearApiKey();
+});
+
+runner.test('Storage API Key: getApiKey ohne gesetzten Wert liefert null', (t) => {
+    const storage = new DataStorage();
+    storage.clearApiKey();
+    t.assertEqual(storage.getApiKey(), null, 'Sollte null sein');
+});
+
+runner.test('Storage API Key: clearApiKey entfernt den Key', (t) => {
+    const storage = new DataStorage();
+    storage.setApiKey('sk-or-test');
+    storage.clearApiKey();
+    t.assertEqual(storage.getApiKey(), null, 'Key sollte gelöscht sein');
+});
+
+runner.test('Storage API Model: Default ist anthropic/claude-sonnet-4.6', (t) => {
+    const storage = new DataStorage();
+    localStorage.removeItem('dienstplan_openrouter_model');
+    t.assertEqual(storage.getApiModel(), 'anthropic/claude-sonnet-4.6', 'Default-Modell');
+});
+
+runner.test('Storage API Model: setApiModel/getApiModel round-trip', (t) => {
+    const storage = new DataStorage();
+    storage.setApiModel('google/gemini-2.5-pro');
+    t.assertEqual(storage.getApiModel(), 'google/gemini-2.5-pro', 'Modell sollte gespeichert sein');
+    localStorage.removeItem('dienstplan_openrouter_model');
+});
+
+runner.test('Storage API Key: exportData enthält keinen API-Key', (t) => {
+    const storage = new DataStorage();
+    storage.setApiKey('sk-or-secret');
+    const exported = storage.exportData();
+    t.assertFalse(exported.includes('sk-or-secret'), 'Key darf nicht im Export sein');
+    storage.clearApiKey();
+});
+
+runner.test('Storage API Key: clearAll laesst API-Key unberuehrt', (t) => {
+    const storage = new DataStorage();
+    storage.setApiKey('sk-or-keep');
+    storage.clearAll();
+    t.assertEqual(storage.getApiKey(), 'sk-or-keep', 'Key sollte clearAll ueberleben');
+    storage.clearApiKey();
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
@@ -505,6 +559,8 @@ async function runAllTests() {
         'Calculator - Tag-Klassifizierung': [],
         'Calculator - Bonusberechnung': [],
         'Storage': [],
+        'Storage API Key': [],
+        'Image Importer': [],
         'Edge Cases': []
     };
 
@@ -515,8 +571,12 @@ async function runAllTests() {
             categories['Calculator - Tag-Klassifizierung'].push(result);
         } else if (result.name.includes('Berechnung:')) {
             categories['Calculator - Bonusberechnung'].push(result);
+        } else if (result.name.startsWith('Storage API')) {
+            categories['Storage API Key'].push(result);
         } else if (result.name.includes('Storage:')) {
             categories['Storage'].push(result);
+        } else if (result.name.startsWith('ImageImporter') || result.name.startsWith('Levenshtein') || result.name.startsWith('Parse') || result.name.startsWith('Match') || result.name.startsWith('Preprocess') || result.name.startsWith('Resolve') || result.name.startsWith('CallVision') || result.name.startsWith('Classify')) {
+            categories['Image Importer'].push(result);
         } else if (result.name.includes('Edge Case:')) {
             categories['Edge Cases'].push(result);
         }
