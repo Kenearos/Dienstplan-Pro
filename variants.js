@@ -89,7 +89,49 @@ function variant1(classified, isVacation) {
 }
 
 function variant2(classified, isVacation) {
-    throw new Error('variant2: not implemented');
+    const RATE_NORMAL  = 250;
+    const RATE_WEEKEND = 450;
+    const saThreshold      = isVacation ? 0.5 : 1;
+    const weekdayThreshold = isVacation ? 1   : 2;
+    const saDeduction      = isVacation ? 0.5 : 1;
+    const weekdayDeduction = isVacation ? 1   : 2;
+
+    const eligible = (classified.sa >= saThreshold - 1e-9)
+                  && (classified.weekday >= weekdayThreshold - 1e-9);
+
+    if (!eligible) {
+        return {
+            variantId: 2,
+            eligible: false,
+            threshold: { sa: saThreshold, weekday: weekdayThreshold },
+            deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
+            paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
+            bonus: 0,
+            isWinner: false
+        };
+    }
+
+    const deduction = { fr: 0, sa: saDeduction, so: 0, weekday: weekdayDeduction };
+
+    const paidShares = {
+        fr:      classified.fr, // fr never deducted in V2
+        sa:      Math.max(0, classified.sa      - deduction.sa),
+        so:      classified.so, // so never deducted in V2
+        weekday: Math.max(0, classified.weekday - deduction.weekday)
+    };
+
+    const bonus = (paidShares.fr + paidShares.sa + paidShares.so) * RATE_WEEKEND
+                + paidShares.weekday * RATE_NORMAL;
+
+    return {
+        variantId: 2,
+        eligible: true,
+        threshold: { sa: saThreshold, weekday: weekdayThreshold },
+        deduction,
+        paidShares,
+        bonus,
+        isWinner: false
+    };
 }
 
 function variant3(classified, isVacation) {

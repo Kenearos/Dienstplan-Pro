@@ -735,6 +735,65 @@ runner.test('variant1: threshold-Shape normal {frSo:1, weekday:3}', (t) => {
 });
 
 // ============================================================================
+// Variants - variant2 (1 sa + 2 weekday)
+// ============================================================================
+
+runner.test('variant2: Schwelle nicht erreicht (sa=0)', (t) => {
+    const r = variant2({ fr: 5, sa: 0, so: 5, weekday: 3 }, false);
+    t.assertFalse(r.eligible, 'eligible=false');
+    t.assertEqual(r.bonus, 0, 'bonus=0');
+});
+
+runner.test('variant2: Schwelle nicht erreicht (weekday<2)', (t) => {
+    const r = variant2({ fr: 0, sa: 2, so: 0, weekday: 1 }, false);
+    t.assertFalse(r.eligible, 'eligible=false');
+});
+
+runner.test('variant2: Spec-Beispiel fr=1,sa=2,so=0,weekday=3 -> 1150', (t) => {
+    const r = variant2({ fr: 1, sa: 2, so: 0, weekday: 3 }, false);
+    t.assertTrue(r.eligible, 'eligible=true');
+    t.assertEqual(r.deduction.sa, 1, 'sa-deduction=1');
+    t.assertEqual(r.deduction.weekday, 2, 'weekday-deduction=2');
+    t.assertEqual(r.deduction.fr, 0, 'fr nicht abgezogen');
+    t.assertEqual(r.deduction.so, 0, 'so nicht abgezogen');
+    t.assertEqual(r.paidShares.fr, 1, 'fr-paid=1');
+    t.assertEqual(r.paidShares.sa, 1, 'sa-paid=1');
+    t.assertEqual(r.paidShares.weekday, 1, 'weekday-paid=1');
+    t.assertEqual(r.bonus, 1150, 'bonus = (1+1+0)*450 + 1*250 = 1150');
+});
+
+runner.test('variant2: sa=1,weekday=2 -> alles weg, bonus 0', (t) => {
+    const r = variant2({ fr: 0, sa: 1, so: 0, weekday: 2 }, false);
+    t.assertTrue(r.eligible, 'eligible=true');
+    t.assertEqual(r.bonus, 0, 'bonus=0');
+});
+
+runner.test('variant2: sa=2,weekday=2,fr=1,so=1 -> fr/so voll bezahlt', (t) => {
+    const r = variant2({ fr: 1, sa: 2, so: 1, weekday: 2 }, false);
+    t.assertEqual(r.paidShares.fr, 1, 'fr-paid=1');
+    t.assertEqual(r.paidShares.sa, 1, 'sa-paid=1');
+    t.assertEqual(r.paidShares.so, 1, 'so-paid=1');
+    t.assertEqual(r.paidShares.weekday, 0, 'weekday-paid=0');
+    t.assertEqual(r.bonus, 3 * 450, 'bonus = 3*450 = 1350');
+});
+
+runner.test('variant2: Urlaubsmodus halbiert (0.5 sa + 1 weekday)', (t) => {
+    const r = variant2({ fr: 0, sa: 0.5, so: 0, weekday: 1 }, true);
+    t.assertTrue(r.eligible, 'eligible=true im Urlaub');
+    t.assertEqual(r.threshold.sa, 0.5, 'threshold.sa=0.5');
+    t.assertEqual(r.threshold.weekday, 1, 'threshold.weekday=1');
+    t.assertEqual(r.deduction.sa, 0.5, 'sa-deduction=0.5');
+    t.assertEqual(r.deduction.weekday, 1, 'weekday-deduction=1');
+    t.assertEqual(r.bonus, 0, 'bonus=0');
+});
+
+runner.test('variant2: threshold-Shape normal {sa:1, weekday:2}', (t) => {
+    const r = variant2({ fr: 0, sa: 1, so: 0, weekday: 2 }, false);
+    t.assertEqual(r.threshold.sa, 1, 'threshold.sa=1');
+    t.assertEqual(r.threshold.weekday, 2, 'threshold.weekday=2');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
