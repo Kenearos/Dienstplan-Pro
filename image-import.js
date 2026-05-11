@@ -116,6 +116,65 @@ class ImageImporter {
             : '';
         return typeof content === 'string' ? content : JSON.stringify(content);
     }
+
+    /**
+     * Strip markdown fences, brace-slice, JSON.parse, schema-validate.
+     * Invalid entries are dropped with console warnings.
+     * @param {string} rawContent
+     * @returns {{ month: number|null, year: number|null, entries: Array<{name:string,date:string,share:number}>, notes: string[] }}
+     */
+    parseResponse(rawContent) {
+        if (typeof rawContent !== 'string') {
+            throw new SyntaxError('Antwort ist kein String');
+        }
+
+        let text = rawContent.trim();
+
+        // Strip ```json ... ``` or ``` ... ``` fences
+        text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+
+        // Brace-slice: find first { and last }
+        const firstBrace = text.indexOf('{');
+        const lastBrace = text.lastIndexOf('}');
+        if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+            throw new SyntaxError('Kein JSON-Objekt in der Antwort gefunden');
+        }
+        text = text.slice(firstBrace, lastBrace + 1);
+
+        const parsed = JSON.parse(text); // may throw SyntaxError
+
+        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.entries)) {
+            throw new Error('Schema-Fehler: entries fehlt oder ist kein Array');
+        }
+
+        const validEntries = [];
+        for (const entry of parsed.entries) {
+            if (!entry || typeof entry.name !== 'string' || entry.name.trim().length === 0) {
+                console.warn('parseResponse: Eintrag mit leerem Namen verworfen', entry);
+                continue;
+            }
+            if (typeof entry.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) {
+                console.warn('parseResponse: Eintrag mit ungueltigem Datum verworfen', entry);
+                continue;
+            }
+            const d = new Date(entry.date + 'T12:00:00');
+            if (isNaN(d.getTime())) {
+                console.warn('parseResponse: Datum nicht parsebar', entry);
+                continue;
+            }
+            if (entry.share !== 0.5 && entry.share !== 1.0) {
+                console.warn('parseResponse: Eintrag mit ungueltigem share verworfen', entry);
+                continue;
+            }
+            validEntries.push({ name: entry.name.trim(), date: entry.date, share: entry.share });
+        }
+
+        const month = (typeof parsed.month === 'number' && parsed.month >= 1 && parsed.month <= 12) ? parsed.month : null;
+        const year = (typeof parsed.year === 'number' && parsed.year >= 2000) ? parsed.year : null;
+        const notes = Array.isArray(parsed.notes) ? parsed.notes.filter(n => typeof n === 'string') : [];
+
+        return { month, year, entries: validEntries, notes };
+    }
 }
 
 // Verbatim system prompt — German with Umlaute (per spec §7.3).

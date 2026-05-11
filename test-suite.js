@@ -647,6 +647,76 @@ runner.test('CallVisionAPI: 503 wirft mit Status', async (t) => {
 });
 
 // ============================================================================
+// ImageImporter Tests - parseResponse (Feature A)
+// ============================================================================
+
+runner.test('Parse: cleanes JSON wird geparst', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"month":11,"year":2025,"entries":[{"name":"Max","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, '1 Eintrag');
+    t.assertEqual(result.entries[0].name, 'Max', 'Name korrekt');
+    t.assertEqual(result.month, 11, 'Monat korrekt');
+});
+
+runner.test('Parse: JSON in Markdown-Fence wird gestrippt', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '```json\n{"entries":[{"name":"A","date":"2025-11-22","share":0.5}],"notes":[]}\n```';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Fence wurde entfernt');
+});
+
+runner.test('Parse: JSON mit Vortext wird per Brace-Slicing extrahiert', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = 'Hier das Ergebnis:\n{"entries":[{"name":"A","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Vortext ignoriert');
+});
+
+runner.test('Parse: Malformed JSON wirft SyntaxError', (t) => {
+    const importer = new ImageImporter(null);
+    try {
+        importer.parseResponse('das ist kein JSON');
+        t.assertTrue(false, 'Sollte werfen');
+    } catch (e) {
+        t.assertTrue(e instanceof SyntaxError || e.name === 'SyntaxError' || /JSON|Parse/i.test(e.message), 'SyntaxError erwartet');
+    }
+});
+
+runner.test('Parse: fehlendes entries-Feld wirft', (t) => {
+    const importer = new ImageImporter(null);
+    try {
+        importer.parseResponse('{"month":11,"year":2025,"notes":[]}');
+        t.assertTrue(false, 'Sollte werfen');
+    } catch (e) {
+        t.assertTrue(/entries/i.test(e.message), 'Fehlermeldung erwaehnt entries');
+    }
+});
+
+runner.test('Parse: share=0.75 verwirft den Eintrag', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"entries":[{"name":"A","date":"2025-11-22","share":0.75},{"name":"B","date":"2025-11-23","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Nur gueltiger Eintrag bleibt');
+    t.assertEqual(result.entries[0].name, 'B', 'B uebrig');
+});
+
+runner.test('Parse: invalides Datum verwirft den Eintrag', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"entries":[{"name":"A","date":"31.11.2025","share":1.0},{"name":"B","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Nur ISO-Datum bleibt');
+    t.assertEqual(result.entries[0].name, 'B', 'B uebrig');
+});
+
+runner.test('Parse: leerer Name wird verworfen', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"entries":[{"name":"   ","date":"2025-11-22","share":1.0},{"name":"B","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Nur gueltiger Name bleibt');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
