@@ -42,7 +42,55 @@ function variant2(classified, isVacation) {
 }
 
 function variant3(classified, isVacation) {
-    throw new Error('variant3: not implemented');
+    const RATE_NORMAL  = 250;
+    const RATE_WEEKEND = 450;
+    const poolThreshold = isVacation ? 1 : 2;
+    const totalDeduction = isVacation ? 1 : 2;
+
+    const pool = classified.fr + classified.sa + classified.so;
+    const eligible = pool >= poolThreshold - 1e-9;
+
+    if (!eligible) {
+        return {
+            variantId: 3,
+            eligible: false,
+            threshold: { pool: poolThreshold },
+            deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
+            paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
+            bonus: 0,
+            isWinner: false
+        };
+    }
+
+    // Friday priority: fr -> so -> sa
+    let remaining = totalDeduction;
+    const deduction = { fr: 0, sa: 0, so: 0, weekday: 0 };
+    for (const slot of ['fr', 'so', 'sa']) {
+        const take = Math.min(remaining, classified[slot]);
+        deduction[slot] = take;
+        remaining -= take;
+        if (remaining <= 1e-9) break;
+    }
+
+    const paidShares = {
+        fr:      Math.max(0, classified.fr      - deduction.fr),
+        sa:      Math.max(0, classified.sa      - deduction.sa),
+        so:      Math.max(0, classified.so      - deduction.so),
+        weekday: classified.weekday // weekday never deducted in V3
+    };
+
+    const bonus = (paidShares.fr + paidShares.sa + paidShares.so) * RATE_WEEKEND
+                + paidShares.weekday * RATE_NORMAL;
+
+    return {
+        variantId: 3,
+        eligible: true,
+        threshold: { pool: poolThreshold },
+        deduction,
+        paidShares,
+        bonus,
+        isWinner: false
+    };
 }
 
 // Expose globally
