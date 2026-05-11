@@ -574,6 +574,79 @@ runner.test('Preprocess: Output ist immer JPEG', async (t) => {
 });
 
 // ============================================================================
+// ImageImporter Tests - callVisionAPI (Feature A)
+// ============================================================================
+
+/**
+ * Helper to mock fetch and restore it.
+ */
+function withMockedFetch(mockFn, fn) {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mockFn;
+    const restore = () => { globalThis.fetch = originalFetch; };
+    return Promise.resolve(fn()).finally(restore);
+}
+
+runner.test('CallVisionAPI: erfolgreicher 200-Response', async (t) => {
+    const importer = new ImageImporter(null);
+    let capturedUrl = null;
+    let capturedInit = null;
+    const mockFetch = async (url, init) => {
+        capturedUrl = url;
+        capturedInit = init;
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '{"entries":[]}' } }]
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    await withMockedFetch(mockFetch, async () => {
+        const content = await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'sk-test', 'anthropic/claude-sonnet-4.6');
+        t.assertEqual(content, '{"entries":[]}', 'Content extrahiert');
+        t.assertEqual(capturedUrl, 'https://openrouter.ai/api/v1/chat/completions', 'Endpoint korrekt');
+        t.assertTrue(capturedInit.headers['Authorization'] === 'Bearer sk-test', 'Auth-Header korrekt');
+    });
+});
+
+runner.test('CallVisionAPI: 401 wirft mit Status', async (t) => {
+    const importer = new ImageImporter(null);
+    const mockFetch = async () => new Response('', { status: 401 });
+    await withMockedFetch(mockFetch, async () => {
+        try {
+            await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'bad', 'anthropic/claude-sonnet-4.6');
+            t.assertTrue(false, 'Sollte werfen');
+        } catch (e) {
+            t.assertEqual(e.status, 401, 'Status auf Error');
+            t.assertEqual(e.name, 'OpenRouterError', 'Typisierter Fehler');
+        }
+    });
+});
+
+runner.test('CallVisionAPI: 429 wirft mit Status', async (t) => {
+    const importer = new ImageImporter(null);
+    const mockFetch = async () => new Response('', { status: 429 });
+    await withMockedFetch(mockFetch, async () => {
+        try {
+            await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'k', 'm');
+            t.assertTrue(false, 'Sollte werfen');
+        } catch (e) {
+            t.assertEqual(e.status, 429, '429 wird durchgereicht');
+        }
+    });
+});
+
+runner.test('CallVisionAPI: 503 wirft mit Status', async (t) => {
+    const importer = new ImageImporter(null);
+    const mockFetch = async () => new Response('', { status: 503 });
+    await withMockedFetch(mockFetch, async () => {
+        try {
+            await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'k', 'm');
+            t.assertTrue(false, 'Sollte werfen');
+        } catch (e) {
+            t.assertEqual(e.status, 503, '503 wird durchgereicht');
+        }
+    });
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
