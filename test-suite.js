@@ -528,6 +528,52 @@ runner.test('Storage API Key: clearAll laesst API-Key unberuehrt', (t) => {
 });
 
 // ============================================================================
+// ImageImporter Tests - Preprocessing (Feature A)
+// ============================================================================
+
+/**
+ * Helper: build a synthetic image File from a canvas.
+ */
+async function makeTestImageFile(width, height, mime = 'image/png') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#3366cc';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '32px sans-serif';
+    ctx.fillText('TEST', 20, 50);
+    const blob = await new Promise(res => canvas.toBlob(res, mime));
+    return new File([blob], 'test.png', { type: mime });
+}
+
+runner.test('Preprocess: 4000x3000 wird auf laengste Kante 2048 skaliert', async (t) => {
+    const importer = new ImageImporter(null);
+    const file = await makeTestImageFile(4000, 3000);
+    const result = await importer.compressImage(file);
+    t.assertEqual(result.width, 2048, 'Breite sollte 2048 sein');
+    t.assertEqual(result.height, 1536, 'Hoehe sollte 1536 sein (Seitenverhaeltnis erhalten)');
+    t.assertTrue(result.dataUrl.startsWith('data:image/jpeg;base64,'), 'dataUrl-Prefix korrekt');
+});
+
+runner.test('Preprocess: 800x600 bleibt unveraendert (kein Upscale)', async (t) => {
+    const importer = new ImageImporter(null);
+    const file = await makeTestImageFile(800, 600);
+    const result = await importer.compressImage(file);
+    t.assertEqual(result.width, 800, 'Breite unveraendert');
+    t.assertEqual(result.height, 600, 'Hoehe unveraendert');
+});
+
+runner.test('Preprocess: Output ist immer JPEG', async (t) => {
+    const importer = new ImageImporter(null);
+    const file = await makeTestImageFile(500, 500, 'image/png');
+    const result = await importer.compressImage(file);
+    t.assertTrue(result.dataUrl.startsWith('data:image/jpeg;base64,'), 'Output ist JPEG');
+    t.assertTrue(result.dataUrl.length > 1000, 'Output-Laenge > 1KB');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
