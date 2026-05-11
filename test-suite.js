@@ -794,6 +794,106 @@ runner.test('variant2: threshold-Shape normal {sa:1, weekday:2}', (t) => {
 });
 
 // ============================================================================
+// BonusCalculator - Winner Selection (new shape)
+// ============================================================================
+
+runner.test('Winner: klarer Sieger mit weekdays + 1 Fr', (t) => {
+    const hp = new HolidayProvider();
+    const calc = new BonusCalculator(hp);
+    const duties = [
+        { date: new Date('2025-11-21T12:00:00'), share: 1.0 }, // Fr
+        { date: new Date('2025-11-24T12:00:00'), share: 1.0 }, // Mo
+        { date: new Date('2025-11-25T12:00:00'), share: 1.0 }, // Di
+        { date: new Date('2025-11-26T12:00:00'), share: 1.0 }, // Mi
+        { date: new Date('2025-11-27T12:00:00'), share: 1.0 }, // Do
+        { date: new Date('2025-11-04T12:00:00'), share: 1.0 }  // Di
+    ];
+    const result = calc.calculateMonthlyBonus(duties, false);
+    t.assertTrue(result.winner.isWinner, 'winner.isWinner=true');
+    t.assertEqual(result.allResults.length, 3, '3 Varianten im allResults');
+    t.assertTrue(result.totalBonus > 0, 'Bonus > 0');
+});
+
+runner.test('Winner: klarer V3-Sieger (nur WE-Dienste)', (t) => {
+    const hp = new HolidayProvider();
+    const calc = new BonusCalculator(hp);
+    const duties = [
+        { date: new Date('2025-11-22T12:00:00'), share: 1.0 }, // Sa
+        { date: new Date('2025-11-23T12:00:00'), share: 1.0 }, // So
+        { date: new Date('2025-11-29T12:00:00'), share: 1.0 }  // Sa
+    ];
+    const result = calc.calculateMonthlyBonus(duties, false);
+    // V1: fr+so=1, weekday=0 -> not eligible
+    // V2: sa=2, weekday=0 -> not eligible
+    // V3: pool=3 -> eligible, deduction 2 (fr=0,so=1 abgezogen, sa=1 abgezogen) -> 1 sa paid -> 450
+    t.assertEqual(result.winner.variantId, 3, 'V3 muss Sieger sein');
+    t.assertEqual(result.totalBonus, 450, 'bonus=450');
+});
+
+runner.test('Winner: Tie-Breaker - alle three not eligible -> V1 nominal winner, totalBonus 0', (t) => {
+    const hp = new HolidayProvider();
+    const calc = new BonusCalculator(hp);
+    // fr=1, sa=0, so=0, weekday=3:
+    // V1: fr+so=1 ok, weekday=3 ok -> eligible. Abzug fr=1, weekday=3 -> alles weg, bonus 0.
+    // V2: sa=0 -> not eligible (0).
+    // V3: pool=1 < 2 -> not eligible (0).
+    // -> tie at 0; V1 has eligible=true so its result is still 0. Strict > keeps v1 as winner.
+    const duties = [
+        { date: new Date('2025-11-21T12:00:00'), share: 1.0 }, // Fr
+        { date: new Date('2025-11-24T12:00:00'), share: 1.0 }, // Mo
+        { date: new Date('2025-11-25T12:00:00'), share: 1.0 }, // Di
+        { date: new Date('2025-11-26T12:00:00'), share: 1.0 }  // Mi
+    ];
+    const result = calc.calculateMonthlyBonus(duties, false);
+    t.assertEqual(result.winner.variantId, 1, 'V1 wins tie (lowest variantId)');
+    t.assertEqual(result.totalBonus, 0, 'totalBonus=0 (all-zero tie)');
+});
+
+runner.test('Winner: nur V3 produziert positive bonus -> V3 winner', (t) => {
+    const hp = new HolidayProvider();
+    const calc = new BonusCalculator(hp);
+    // Three Saturdays: V1 not eligible, V2 not eligible (weekday=0), V3 eligible with positive bonus.
+    const duties = [
+        { date: new Date('2025-11-22T12:00:00'), share: 1.0 },
+        { date: new Date('2025-11-29T12:00:00'), share: 1.0 },
+        { date: new Date('2025-11-15T12:00:00'), share: 1.0 }
+    ];
+    const result = calc.calculateMonthlyBonus(duties, false);
+    // V3: pool=3, abzug 2 (so=0, fr=0, sa=2 abgezogen) -> 1 sa paid -> 450
+    t.assertEqual(result.winner.variantId, 3, 'V3 winner');
+    t.assertEqual(result.totalBonus, 450, 'bonus=450');
+});
+
+runner.test('Winner: result-Shape enthaelt classified, isVacation, dutyDetails', (t) => {
+    const hp = new HolidayProvider();
+    const calc = new BonusCalculator(hp);
+    const duties = [
+        { date: new Date('2025-11-22T12:00:00'), share: 1.0 },
+        { date: new Date('2025-11-23T12:00:00'), share: 1.0 }
+    ];
+    const result = calc.calculateMonthlyBonus(duties, false);
+    t.assertTrue('classified' in result, 'classified field exists');
+    t.assertTrue('isVacation' in result, 'isVacation field exists');
+    t.assertTrue('dutyDetails' in result, 'dutyDetails field exists');
+    t.assertEqual(result.dutyDetails.length, 2, 'dutyDetails has 2 entries');
+    t.assertEqual(result.isVacation, false, 'isVacation=false');
+});
+
+runner.test('Winner: Urlaubsmodus halbiert alle Schwellen', (t) => {
+    const hp = new HolidayProvider();
+    const calc = new BonusCalculator(hp);
+    // fr=0.5, weekday=1.5 -> V1 eligible im Urlaub (0.5 >= 0.5, 1.5 >= 1.5)
+    const duties = [
+        { date: new Date('2025-11-21T12:00:00'), share: 0.5 }, // Fr
+        { date: new Date('2025-11-24T12:00:00'), share: 1.0 }, // Mo
+        { date: new Date('2025-11-25T12:00:00'), share: 0.5 }  // Di
+    ];
+    const result = calc.calculateMonthlyBonus(duties, true);
+    t.assertEqual(result.isVacation, true, 'isVacation propagated');
+    t.assertEqual(result.winner.variantId, 1, 'V1 wins under vacation');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
