@@ -6,7 +6,21 @@
 
 // Will be implemented in subsequent tasks.
 function classify(date, holidayProvider) {
-    throw new Error('classify: not implemented');
+    const wd = date.getDay(); // 0=So, 1=Mo, ..., 5=Fr, 6=Sa
+
+    // Real Fr/Sa/So always win
+    if (wd === 5) return 'fr';
+    if (wd === 6) return 'sa';
+    if (wd === 0) return 'so';
+
+    // Mo-Do (wd 1..4)
+    const isFeiertag       = holidayProvider.isHoliday(date);
+    const isTagVorFeiertag = holidayProvider.isDayBeforeHoliday(date);
+
+    if (isFeiertag && isTagVorFeiertag) return 'sa'; // Sandwich-Tag
+    if (isTagVorFeiertag)               return 'fr'; // Tag vor Mo-Do-Feiertag
+    if (isFeiertag)                     return 'so'; // Feiertag Mo-Do
+    return 'weekday';
 }
 
 function classifyDuties(duties, holidayProvider) {
