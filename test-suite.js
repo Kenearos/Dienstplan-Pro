@@ -544,6 +544,53 @@ runner.test('classify: Sandwich Mo+Di Feiertag -> Mo=sa, Di=so', (t) => {
     t.assertEqual(classify(tuesday, fakeHp), 'so', 'Di Feiertag (kein Sandwich, kein Tag-vor) -> so');
 });
 
+runner.test('classifyDuties: leeres Array -> alle Slots 0', (t) => {
+    const hp = new HolidayProvider();
+    const result = classifyDuties([], hp);
+    t.assertEqual(result.fr, 0, 'fr=0');
+    t.assertEqual(result.sa, 0, 'sa=0');
+    t.assertEqual(result.so, 0, 'so=0');
+    t.assertEqual(result.weekday, 0, 'weekday=0');
+});
+
+runner.test('classifyDuties: halbe Schicht auf Freitag zaehlt 0.5', (t) => {
+    const hp = new HolidayProvider();
+    const duties = [
+        { date: new Date('2025-11-21T12:00:00'), share: 0.5 } // Fr
+    ];
+    const result = classifyDuties(duties, hp);
+    t.assertAlmostEqual(result.fr, 0.5, 0.0001, 'fr=0.5');
+    t.assertEqual(result.sa, 0, 'sa=0');
+    t.assertEqual(result.so, 0, 'so=0');
+    t.assertEqual(result.weekday, 0, 'weekday=0');
+});
+
+runner.test('classifyDuties: mehrere Dienste pro Slot summieren', (t) => {
+    const hp = new HolidayProvider();
+    const duties = [
+        { date: new Date('2025-11-21T12:00:00'), share: 1.0 }, // Fr
+        { date: new Date('2025-11-22T12:00:00'), share: 1.0 }, // Sa
+        { date: new Date('2025-11-23T12:00:00'), share: 0.5 }, // So
+        { date: new Date('2025-11-24T12:00:00'), share: 1.0 }, // Mo (weekday)
+        { date: new Date('2025-11-25T12:00:00'), share: 0.5 }  // Di (weekday)
+    ];
+    const result = classifyDuties(duties, hp);
+    t.assertAlmostEqual(result.fr, 1.0, 0.0001, 'fr=1.0');
+    t.assertAlmostEqual(result.sa, 1.0, 0.0001, 'sa=1.0');
+    t.assertAlmostEqual(result.so, 0.5, 0.0001, 'so=0.5');
+    t.assertAlmostEqual(result.weekday, 1.5, 0.0001, 'weekday=1.5');
+});
+
+runner.test('classifyDuties: Tag vor Feiertag (Mi vor Christi Himmelfahrt) zaehlt in fr', (t) => {
+    const hp = new HolidayProvider();
+    const duties = [
+        { date: new Date('2025-05-28T12:00:00'), share: 1.0 } // Mi vor Christi Himmelfahrt
+    ];
+    const result = classifyDuties(duties, hp);
+    t.assertAlmostEqual(result.fr, 1.0, 0.0001, 'Mi-vor-Do-Feiertag -> fr');
+    t.assertEqual(result.weekday, 0, 'weekday=0');
+});
+
 // ============================================================================
 // Display Functions
 // ============================================================================

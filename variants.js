@@ -24,7 +24,13 @@ function classify(date, holidayProvider) {
 }
 
 function classifyDuties(duties, holidayProvider) {
-    throw new Error('classifyDuties: not implemented');
+    const result = { fr: 0, sa: 0, so: 0, weekday: 0 };
+    if (!Array.isArray(duties)) return result;
+    for (const duty of duties) {
+        const slot = classify(duty.date, holidayProvider);
+        result[slot] += duty.share;
+    }
+    return result;
 }
 
 function variant1(classified, isVacation) {
