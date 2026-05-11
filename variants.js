@@ -34,7 +34,58 @@ function classifyDuties(duties, holidayProvider) {
 }
 
 function variant1(classified, isVacation) {
-    throw new Error('variant1: not implemented');
+    const RATE_NORMAL  = 250;
+    const RATE_WEEKEND = 450;
+    const frSoThreshold    = isVacation ? 0.5 : 1;
+    const weekdayThreshold = isVacation ? 1.5 : 3;
+    const frSoDeduction    = isVacation ? 0.5 : 1;
+    const weekdayDeduction = isVacation ? 1.5 : 3;
+
+    const frSoPool = classified.fr + classified.so;
+    const eligible = (frSoPool >= frSoThreshold - 1e-9)
+                  && (classified.weekday >= weekdayThreshold - 1e-9);
+
+    if (!eligible) {
+        return {
+            variantId: 1,
+            eligible: false,
+            threshold: { frSo: frSoThreshold, weekday: weekdayThreshold },
+            deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
+            paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
+            bonus: 0,
+            isWinner: false
+        };
+    }
+
+    // Friday priority within fr+so pool: fr first, then so
+    let remaining = frSoDeduction;
+    const deduction = { fr: 0, sa: 0, so: 0, weekday: weekdayDeduction };
+    for (const slot of ['fr', 'so']) {
+        const take = Math.min(remaining, classified[slot]);
+        deduction[slot] = take;
+        remaining -= take;
+        if (remaining <= 1e-9) break;
+    }
+
+    const paidShares = {
+        fr:      Math.max(0, classified.fr      - deduction.fr),
+        sa:      classified.sa, // sa never deducted in V1
+        so:      Math.max(0, classified.so      - deduction.so),
+        weekday: Math.max(0, classified.weekday - deduction.weekday)
+    };
+
+    const bonus = (paidShares.fr + paidShares.sa + paidShares.so) * RATE_WEEKEND
+                + paidShares.weekday * RATE_NORMAL;
+
+    return {
+        variantId: 1,
+        eligible: true,
+        threshold: { frSo: frSoThreshold, weekday: weekdayThreshold },
+        deduction,
+        paidShares,
+        bonus,
+        isWinner: false
+    };
 }
 
 function variant2(classified, isVacation) {
