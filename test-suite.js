@@ -474,6 +474,77 @@ runner.test('Edge Case: Dienst am 29. Februar (Schaltjahr)', (t) => {
 });
 
 // ============================================================================
+// Variants - classify()
+// ============================================================================
+
+runner.test('classify: Karfreitag 2025 (Fr-Feiertag) -> fr', (t) => {
+    const hp = new HolidayProvider();
+    const date = new Date('2025-04-18T12:00:00');
+    t.assertEqual(classify(date, hp), 'fr', 'Karfreitag (Fr) muss fr sein');
+});
+
+runner.test('classify: Ostermontag 2025 (Mo-Feiertag) -> so', (t) => {
+    const hp = new HolidayProvider();
+    const date = new Date('2025-04-21T12:00:00');
+    t.assertEqual(classify(date, hp), 'so', 'Ostermontag (Mo-Feiertag) muss so sein');
+});
+
+runner.test('classify: Christi Himmelfahrt 2025 (Do-Feiertag) -> so', (t) => {
+    const hp = new HolidayProvider();
+    const date = new Date('2025-05-29T12:00:00');
+    t.assertEqual(classify(date, hp), 'so', 'Do-Feiertag ohne Fr-Feiertag muss so sein');
+});
+
+runner.test('classify: Mi vor Christi Himmelfahrt 2025 -> fr', (t) => {
+    const hp = new HolidayProvider();
+    const date = new Date('2025-05-28T12:00:00');
+    t.assertEqual(classify(date, hp), 'fr', 'Tag vor Mo-Do-Feiertag muss fr sein');
+});
+
+runner.test('classify: Tag der Deutschen Einheit 2025 (Fr-Feiertag) -> fr', (t) => {
+    const hp = new HolidayProvider();
+    const date = new Date('2025-10-03T12:00:00');
+    t.assertEqual(classify(date, hp), 'fr', 'Fr-Feiertag muss fr sein');
+});
+
+runner.test('classify: Sandwich Do+Fr Feiertag -> Do=sa, Fr=fr', (t) => {
+    // Use a fake HolidayProvider that flags Do AND Fr as Feiertag.
+    const fakeHp = {
+        isHoliday(date) {
+            const day = date.getDay();
+            return day === 4 || day === 5; // Thu or Fri
+        },
+        isDayBeforeHoliday(date) {
+            const next = new Date(date);
+            next.setDate(next.getDate() + 1);
+            return this.isHoliday(next);
+        }
+    };
+    const thursday = new Date('2025-11-20T12:00:00'); // Donnerstag
+    const friday   = new Date('2025-11-21T12:00:00'); // Freitag
+    t.assertEqual(classify(thursday, fakeHp), 'sa', 'Do Feiertag + Tag vor Fr Feiertag -> sa (Sandwich)');
+    t.assertEqual(classify(friday, fakeHp), 'fr', 'Fr Feiertag bleibt fr (Wochentag gewinnt)');
+});
+
+runner.test('classify: Sandwich Mo+Di Feiertag -> Mo=sa, Di=so', (t) => {
+    const fakeHp = {
+        isHoliday(date) {
+            const day = date.getDay();
+            return day === 1 || day === 2; // Mon or Tue
+        },
+        isDayBeforeHoliday(date) {
+            const next = new Date(date);
+            next.setDate(next.getDate() + 1);
+            return this.isHoliday(next);
+        }
+    };
+    const monday  = new Date('2025-11-24T12:00:00'); // Montag
+    const tuesday = new Date('2025-11-25T12:00:00'); // Dienstag
+    t.assertEqual(classify(monday, fakeHp), 'sa', 'Mo Feiertag + Tag vor Di Feiertag -> sa');
+    t.assertEqual(classify(tuesday, fakeHp), 'so', 'Di Feiertag (kein Sandwich, kein Tag-vor) -> so');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
