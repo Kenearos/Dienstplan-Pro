@@ -748,6 +748,107 @@ runner.test('Levenshtein: 2 Distanz', (t) => {
 });
 
 // ============================================================================
+// ImageImporter Tests - normalizeName, matchNames, classify (Feature A)
+// ============================================================================
+
+runner.test('Match: exakter Match (case + whitespace identisch)', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Max Mustermann', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.matched.length, 1, '1 zugeordnet');
+    t.assertEqual(r.matched[0].resolvedName, 'Max Mustermann', 'Direkt aufgeloest');
+    t.assertEqual(r.unknowns.length, 0, 'Keine Unknowns');
+});
+
+runner.test('Match: normalisierter Match (Whitespace + Case)', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: '  MAX   mustermann  ', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.matched.length, 1, '1 zugeordnet');
+    t.assertEqual(r.matched[0].resolvedName, 'Max Mustermann', 'Normalisiert aufgeloest');
+});
+
+runner.test('Match: Fuzzy mit Distance 1', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Max Mustermannn', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.matched.length, 0, 'Nicht automatisch gematcht');
+    t.assertEqual(r.unknowns.length, 1, '1 Unknown');
+    t.assertEqual(r.unknowns[0].suggested, 'Max Mustermann', 'Vorschlag = naechster');
+    t.assertEqual(r.unknowns[0].candidate, 'Max Mustermannn', 'Original-Kandidat');
+});
+
+runner.test('Match: Distance > 2 ohne Vorschlag', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Egon Olsen', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.unknowns.length, 1, '1 Unknown');
+    t.assertEqual(r.unknowns[0].suggested, null, 'Kein Vorschlag');
+});
+
+runner.test('Match: leere Employee-Liste alle Unknowns', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Max', date: '2025-11-22', share: 1.0 }],
+        []
+    );
+    t.assertEqual(r.unknowns.length, 1, 'Unknown');
+    t.assertEqual(r.unknowns[0].suggested, null, 'Kein Vorschlag moeglich');
+});
+
+runner.test('Match: mehrere Fuzzy-Treffer gleiche Distanz alphabetisch erster', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Anne', date: '2025-11-22', share: 1.0 }],
+        ['Anna', 'Anni']
+    );
+    t.assertEqual(r.unknowns[0].suggested, 'Anna', 'Alphabetisch erster');
+});
+
+runner.test('Classify: Freitag = fr', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const fri = new Date('2025-11-21T12:00:00');
+    t.assertEqual(importer.classify(fri), 'fr', 'Freitag');
+});
+
+runner.test('Classify: Samstag = sa', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const sat = new Date('2025-11-22T12:00:00');
+    t.assertEqual(importer.classify(sat), 'sa', 'Samstag');
+});
+
+runner.test('Classify: Feiertag (Werktag) = so', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const may1 = new Date('2025-05-01T12:00:00');
+    t.assertEqual(importer.classify(may1), 'so', 'Feiertag = so');
+});
+
+runner.test('Classify: Tag vor Feiertag (Werktag) = fr', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const apr30 = new Date('2025-04-30T12:00:00');
+    t.assertEqual(importer.classify(apr30), 'fr', 'Tag vor Feiertag');
+});
+
+runner.test('Classify: Werktag = weekday', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const mon = new Date('2025-11-24T12:00:00');
+    t.assertEqual(importer.classify(mon), 'weekday', 'Werktag');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 

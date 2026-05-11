@@ -203,6 +203,77 @@ class ImageImporter {
         }
         return dp[m][n];
     }
+
+    /**
+     * Normalize: lowercase, trim, collapse internal whitespace.
+     * No umlaut folding (per spec section 10.1).
+     * @param {string} name
+     * @returns {string}
+     */
+    normalizeName(name) {
+        return String(name).toLowerCase().trim().replace(/\s+/g, ' ');
+    }
+
+    /**
+     * For each extracted entry, try exact-normalized match against existing employees;
+     * else compute Levenshtein nearest with distance <= 2.
+     * @param {Array<{name:string,date:string,share:number}>} extractedEntries
+     * @param {string[]} existingEmployees
+     * @returns {{ matched: Array<{entry:object, resolvedName:string}>, unknowns: Array<{candidate:string, suggested:string|null}> }}
+     */
+    matchNames(extractedEntries, existingEmployees) {
+        const normalizedMap = new Map();
+        for (const emp of existingEmployees) {
+            normalizedMap.set(this.normalizeName(emp), emp);
+        }
+        const sortedEmployees = [...existingEmployees].sort();
+
+        const matched = [];
+        const unknownsByCandidate = new Map();
+
+        for (const entry of extractedEntries) {
+            const normCandidate = this.normalizeName(entry.name);
+            if (normalizedMap.has(normCandidate)) {
+                matched.push({ entry, resolvedName: normalizedMap.get(normCandidate) });
+                continue;
+            }
+
+            let best = null;
+            let bestDist = Infinity;
+            for (const emp of sortedEmployees) {
+                const d = this.levenshtein(normCandidate, this.normalizeName(emp));
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = emp;
+                }
+            }
+            const suggested = (best !== null && bestDist <= 2) ? best : null;
+
+            if (!unknownsByCandidate.has(entry.name)) {
+                unknownsByCandidate.set(entry.name, { candidate: entry.name, suggested });
+            }
+        }
+
+        return { matched, unknowns: Array.from(unknownsByCandidate.values()) };
+    }
+
+    /**
+     * Slot classification, duplicated from Feature B per spec section 9.3 (independent feature).
+     * @param {Date} date
+     * @returns {'fr'|'sa'|'so'|'weekday'}
+     */
+    classify(date) {
+        const wd = date.getDay();
+        if (wd === 5) return 'fr';
+        if (wd === 6) return 'sa';
+        if (wd === 0) return 'so';
+        const isFeiertag = this.holidayProvider && this.holidayProvider.isHoliday(date);
+        const isTagVorFeiertag = this.holidayProvider && this.holidayProvider.isDayBeforeHoliday(date);
+        if (isFeiertag && isTagVorFeiertag) return 'sa';
+        if (isTagVorFeiertag) return 'fr';
+        if (isFeiertag) return 'so';
+        return 'weekday';
+    }
 }
 
 // Verbatim system prompt — German with Umlaute (per spec §7.3).
