@@ -849,6 +849,63 @@ runner.test('Classify: Werktag = weekday', (t) => {
 });
 
 // ============================================================================
+// ImageImporter Tests - resolveImports (pure) (Feature A)
+// ============================================================================
+
+runner.test('Resolve: gemischte unknowns (new + assign + ignore)', (t) => {
+    const importer = new ImageImporter(null);
+    const session = {
+        entries: [
+            { name: 'Max Mustermann', date: new Date('2025-11-22T12:00:00'), dateStr: '2025-11-22', share: 1.0 },
+            { name: 'Max Mustermannn', date: new Date('2025-11-23T12:00:00'), dateStr: '2025-11-23', share: 0.5 },
+            { name: 'Egon Olsen', date: new Date('2025-11-28T12:00:00'), dateStr: '2025-11-28', share: 1.0 },
+            { name: 'Hugo Ignored', date: new Date('2025-11-29T12:00:00'), dateStr: '2025-11-29', share: 1.0 }
+        ],
+        unknowns: [
+            { candidate: 'Max Mustermannn', suggested: 'Max Mustermann', choice: 'assign:Max Mustermann' },
+            { candidate: 'Egon Olsen', suggested: null, choice: 'new' },
+            { candidate: 'Hugo Ignored', suggested: null, choice: 'ignore' }
+        ],
+        resolvedNames: new Map([['Max Mustermann', 'Max Mustermann']]),
+        targetYear: 2025,
+        targetMonth: 11
+    };
+    const plan = importer.resolveImports(session);
+    t.assertEqual(plan.newEmployees.length, 1, '1 neuer MA');
+    t.assertEqual(plan.newEmployees[0], 'Egon Olsen', 'Egon ist neu');
+    t.assertEqual(plan.commits.length, 3, '3 Commits (Hugo ignoriert)');
+    t.assertEqual(plan.skippedOutsideMonth, 0, 'Keine ausserhalb Monat');
+
+    const max22 = plan.commits.find(c => c.employeeName === 'Max Mustermann' && c.dateStr === '2025-11-22');
+    t.assertTrue(!!max22, 'Max am 22.11 vorhanden');
+    t.assertEqual(max22.share, 1.0, 'Share 1.0');
+
+    const maxFromFuzzy = plan.commits.find(c => c.employeeName === 'Max Mustermann' && c.dateStr === '2025-11-23');
+    t.assertTrue(!!maxFromFuzzy, 'Fuzzy-Match wurde aufgeloest');
+    t.assertEqual(maxFromFuzzy.share, 0.5, 'Share 0.5');
+
+    const egon = plan.commits.find(c => c.employeeName === 'Egon Olsen');
+    t.assertTrue(!!egon, 'Egon committed');
+});
+
+runner.test('Resolve: ausserhalb Monat wird uebersprungen', (t) => {
+    const importer = new ImageImporter(null);
+    const session = {
+        entries: [
+            { name: 'A', date: new Date('2025-11-22T12:00:00'), dateStr: '2025-11-22', share: 1.0 },
+            { name: 'A', date: new Date('2025-12-01T12:00:00'), dateStr: '2025-12-01', share: 1.0 }
+        ],
+        unknowns: [{ candidate: 'A', suggested: null, choice: 'new' }],
+        resolvedNames: new Map(),
+        targetYear: 2025,
+        targetMonth: 11
+    };
+    const plan = importer.resolveImports(session);
+    t.assertEqual(plan.commits.length, 1, 'Nur November-Eintrag bleibt');
+    t.assertEqual(plan.skippedOutsideMonth, 1, '1 uebersprungen');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 

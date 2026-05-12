@@ -715,6 +715,112 @@ class ImageImporter {
     }
 
     /**
+     * Pure: turn session state into a commit plan.
+     * @param {object} session
+     * @returns {{ newEmployees: string[], commits: Array<{employeeName:string,year:number,month:number,date:Date,dateStr:string,share:number}>, skippedOutsideMonth: number }}
+     */
+    resolveImports(session) {
+        const choiceByCandidate = new Map();
+        for (const u of session.unknowns) {
+            choiceByCandidate.set(u.candidate, u.choice);
+        }
+
+        const newEmployees = new Set();
+        const commits = [];
+        let skippedOutsideMonth = 0;
+
+        for (const e of session.entries) {
+            let resolved;
+            if (session.resolvedNames.has(e.name)) {
+                resolved = session.resolvedNames.get(e.name);
+            } else {
+                const choice = choiceByCandidate.get(e.name) || 'new';
+                if (choice === 'ignore') continue;
+                if (choice === 'new') {
+                    resolved = e.name;
+                    newEmployees.add(e.name);
+                } else if (choice.startsWith('assign:')) {
+                    resolved = choice.slice('assign:'.length);
+                } else {
+                    resolved = e.name;
+                }
+            }
+
+            const y = e.date.getFullYear();
+            const m = e.date.getMonth() + 1;
+            if (y !== session.targetYear || m !== session.targetMonth) {
+                skippedOutsideMonth++;
+                continue;
+            }
+
+            commits.push({
+                employeeName: resolved,
+                year: session.targetYear,
+                month: session.targetMonth,
+                date: e.date,
+                dateStr: e.dateStr,
+                share: e.share
+            });
+        }
+
+        return { newEmployees: Array.from(newEmployees), commits, skippedOutsideMonth };
+    }
+
+    /**
+     * Stage 3 to Stage 4. Resolve plan, persist via DataStorage, refresh UI.
+     */
+    async commitImport() {
+        if (!this.session) return;
+        const plan = this.resolveImports(this.session);
+
+        for (const name of plan.newEmployees) {
+            this.storage.addEmployee(name);
+        }
+
+        let okCount = 0;
+        let errCount = 0;
+        const affectedEmployees = new Set();
+        for (const c of plan.commits) {
+            try {
+                this.storage.addDuty(c.employeeName, c.year, c.month, c.date, c.share);
+                affectedEmployees.add(c.employeeName);
+                okCount++;
+            } catch (e) {
+                console.error('commitImport: addDuty failed', e);
+                errCount++;
+                break; // per spec 13.4
+            }
+        }
+
+        if (this.app) {
+            if (plan.newEmployees.length > 0) {
+                this.app.loadEmployeeSelects();
+                this.app.loadEmployeeList();
+            }
+            this.app.loadDutiesForSelectedEmployee();
+
+            if (errCount > 0) {
+                this.app.showToast(`Speicherfehler - Import unvollstaendig (${okCount} von ${plan.commits.length} erfolgreich)`, 'error');
+            } else {
+                const msg = `${okCount} Dienste fuer ${affectedEmployees.size} Mitarbeiter importiert`;
+                this.app.showToast(msg, 'success');
+                if (plan.skippedOutsideMonth > 0) {
+                    setTimeout(() => {
+                        this.app.showToast(`${plan.skippedOutsideMonth} Eintraege ausserhalb des gewaehlten Monats uebersprungen`, 'info');
+                    }, 1600);
+                }
+            }
+        }
+
+        const doneSummary = document.getElementById('image-import-done-summary');
+        if (doneSummary) {
+            doneSummary.textContent = `${okCount} Dienste fuer ${affectedEmployees.size} Mitarbeiter importiert.`;
+        }
+        this.showStage(4);
+        setTimeout(() => this.close(), 1500);
+    }
+
+    /**
      * Validate file (type + size), set into session, render thumbnail, enable Erkennen.
      * @param {File} file
      */
