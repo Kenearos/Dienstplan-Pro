@@ -658,3 +658,29 @@ header h1 {
     color: #dc3545;
     font-weight: 600;
 }
+
+/* === Date Stepper === */
+.date-stepper {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.date-stepper input[type="date"] {
+    /* override the .form-group width */
+    width: 100%;
+}
+
+.date-stepper button {
+    padding: 0 14px;
+    margin: 0;
+    font-size: 1.2rem;
+    line-height: 1;
+    min-width: 44px;
+}
+
+.date-stepper button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}

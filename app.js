@@ -43,8 +43,13 @@ class DienstplanApp {
         // Duty management
         document.getElementById('add-duty-btn').addEventListener('click', () => this.addDuty());
         document.getElementById('employee-select-duty').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
-        document.getElementById('month-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
-        document.getElementById('year-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
+
+        // Date stepper buttons (Feature C)
+        document.getElementById('duty-date-prev').addEventListener('click', () => this.stepDutyDate(-1));
+        document.getElementById('duty-date-next').addEventListener('click', () => this.stepDutyDate(+1));
+        document.getElementById('duty-date').addEventListener('change', () => this.updateDateStepperState());
+        document.getElementById('month-select').addEventListener('change', () => this.onDutyMonthChange());
+        document.getElementById('year-select').addEventListener('change', () => this.onDutyMonthChange());
 
         // Calculation
         document.getElementById('calculate-btn').addEventListener('click', () => this.calculateBonuses());
@@ -104,6 +109,8 @@ class DienstplanApp {
         // Set date input to today
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('duty-date').value = today;
+
+        this.updateDateStepperState();
     }
 
     /**
@@ -262,6 +269,86 @@ class DienstplanApp {
     removeDuty(employeeName, year, month, date) {
         this.storage.removeDuty(employeeName, year, month, date);
         this.showToast('Dienst wurde gelöscht.', 'success');
+        this.loadDutiesForSelectedEmployee();
+    }
+
+    /**
+     * Step the duty-date input by +/-1 day, clamped to the currently selected month.
+     */
+    stepDutyDate(delta) {
+        const dateInput = document.getElementById('duty-date');
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect  = document.getElementById('year-select');
+        const month = parseInt(monthSelect.value);
+        const year  = parseInt(yearSelect.value);
+        const lastDay = new Date(year, month, 0).getDate();
+
+        if (!dateInput.value) {
+            // Initialize to 1st of the selected month
+            dateInput.value = `${year}-${String(month).padStart(2, '0')}-01`;
+            this.updateDateStepperState();
+            return;
+        }
+        const cur = new Date(dateInput.value + 'T12:00:00');
+        // If outside selected month, snap to 1st
+        const inMonth = (cur.getFullYear() === year) && ((cur.getMonth() + 1) === month);
+        if (!inMonth) {
+            dateInput.value = `${year}-${String(month).padStart(2, '0')}-01`;
+            this.updateDateStepperState();
+            return;
+        }
+        const curDay = cur.getDate();
+        const newDay = curDay + delta;
+        if (newDay < 1 || newDay > lastDay) return; // clamp
+        const newDate = new Date(year, month - 1, newDay, 12, 0, 0);
+        const yyyy = newDate.getFullYear();
+        const mm   = String(newDate.getMonth() + 1).padStart(2, '0');
+        const dd   = String(newDate.getDate()).padStart(2, '0');
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        this.updateDateStepperState();
+    }
+
+    /**
+     * Update the disabled state of the stepper buttons based on current date / month.
+     */
+    updateDateStepperState() {
+        const dateInput = document.getElementById('duty-date');
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect  = document.getElementById('year-select');
+        const prevBtn = document.getElementById('duty-date-prev');
+        const nextBtn = document.getElementById('duty-date-next');
+        if (!dateInput || !prevBtn || !nextBtn) return;
+
+        const month = parseInt(monthSelect.value);
+        const year  = parseInt(yearSelect.value);
+        const lastDay = new Date(year, month, 0).getDate();
+
+        if (!dateInput.value) {
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+            return;
+        }
+        const cur = new Date(dateInput.value + 'T12:00:00');
+        const inSelectedMonth = (cur.getFullYear() === year) && ((cur.getMonth() + 1) === month);
+        if (!inSelectedMonth) {
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+            return;
+        }
+        prevBtn.disabled = cur.getDate() <= 1;
+        nextBtn.disabled = cur.getDate() >= lastDay;
+    }
+
+    /**
+     * Handle month/year change in the duty tab: set date to 1st of new month, refresh list, refresh stepper.
+     */
+    onDutyMonthChange() {
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect  = document.getElementById('year-select');
+        const month = parseInt(monthSelect.value);
+        const year  = parseInt(yearSelect.value);
+        document.getElementById('duty-date').value = `${year}-${String(month).padStart(2, '0')}-01`;
+        this.updateDateStepperState();
         this.loadDutiesForSelectedEmployee();
     }
 

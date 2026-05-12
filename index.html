@@ -69,7 +69,11 @@
                 <!-- Add Duty Form -->
                 <div class="form-group">
                     <label for="duty-date">Datum:</label>
-                    <input type="date" id="duty-date">
+                    <div class="date-stepper">
+                        <button type="button" id="duty-date-prev" class="btn btn-secondary" aria-label="Vorheriger Tag">&lsaquo;</button>
+                        <input type="date" id="duty-date">
+                        <button type="button" id="duty-date-next" class="btn btn-secondary" aria-label="Nächster Tag">&rsaquo;</button>
+                    </div>
                 </div>
 
                 <div class="form-group">
