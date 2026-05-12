@@ -407,6 +407,117 @@ class ImageImporter {
     }
 
     /**
+     * Stage 1 to Stage 2 to (Stage 3 | back-to-1 on error).
+     * Compress, call API, parse, dedupe, match names, then showStage(3).
+     */
+    async runRecognition() {
+        if (!this.session || !this.session.file) {
+            if (this.app) this.app.showToast('Kein Bild ausgewaehlt', 'error');
+            return;
+        }
+
+        this.showStage(2);
+        this.abortController = new AbortController();
+
+        try {
+            const compressed = await this.compressImage(this.session.file);
+            this.session.dataUrl = compressed.dataUrl;
+
+            const apiKey = this.storage.getApiKey();
+            const modelId = this.storage.getApiModel();
+            const rawContent = await this.callVisionAPI(
+                compressed.dataUrl,
+                apiKey,
+                modelId,
+                this.abortController.signal
+            );
+
+            const parsed = this.parseResponse(rawContent);
+            if (parsed.entries.length === 0) {
+                if (this.app) this.app.showToast('Keine Dienste erkannt', 'info');
+                this.showStage(1);
+                return;
+            }
+
+            // Dedupe (name, date) — keep higher share on conflict
+            const dedup = new Map();
+            const dupeNotes = [];
+            for (const e of parsed.entries) {
+                const key = `${e.name}|${e.date}`;
+                const prev = dedup.get(key);
+                if (prev) {
+                    if (e.share > prev.share) {
+                        dedup.set(key, e);
+                        dupeNotes.push(`Doppelter Eintrag fuer ${e.name} am ${e.date} - hoeherer Anteil verwendet`);
+                    }
+                } else {
+                    dedup.set(key, e);
+                }
+            }
+            const dedupedEntries = Array.from(dedup.values());
+
+            const employees = this.storage.getEmployees();
+            const matchResult = this.matchNames(dedupedEntries, employees);
+
+            this.session.detectedMonth = parsed.month;
+            this.session.detectedYear = parsed.year;
+            this.session.notes = [...(parsed.notes || []), ...dupeNotes];
+            this.session.entries = dedupedEntries.map(e => ({
+                name: e.name,
+                date: new Date(e.date + 'T12:00:00'),
+                dateStr: e.date,
+                share: e.share
+            }));
+            this.session.unknowns = matchResult.unknowns.map(u => ({
+                candidate: u.candidate,
+                suggested: u.suggested,
+                choice: u.suggested ? `assign:${u.suggested}` : 'new'
+            }));
+            this.session.resolvedNames = new Map();
+            matchResult.matched.forEach(m => {
+                this.session.resolvedNames.set(m.entry.name, m.resolvedName);
+            });
+
+            this.renderPreview();
+            this.showStage(3);
+        } catch (err) {
+            this.handleRecognitionError(err);
+        } finally {
+            this.abortController = null;
+        }
+    }
+
+    /**
+     * Toast appropriate message and return to Stage 1 (or close on AbortError).
+     * @param {Error} err
+     */
+    handleRecognitionError(err) {
+        if (err && err.name === 'AbortError') {
+            this.close();
+            return;
+        }
+        let msg;
+        if (err && err.name === 'OpenRouterError') {
+            switch (err.status) {
+                case 401: msg = 'API-Key ungueltig'; break;
+                case 402:
+                case 429: msg = 'Limit erreicht oder Guthaben aufgebraucht'; break;
+                default:
+                    if (err.status >= 500) msg = `Server-Fehler, spaeter nochmal (HTTP ${err.status})`;
+                    else msg = `Anfrage abgelehnt (HTTP ${err.status})`;
+            }
+        } else if (err instanceof TypeError) {
+            msg = 'Keine Verbindung zu OpenRouter - Internet pruefen';
+        } else if (err instanceof SyntaxError || (err && /JSON|Schema|entries/i.test(err.message))) {
+            msg = 'Erkennung fehlgeschlagen - anderes Modell probieren oder Bild pruefen';
+        } else {
+            msg = 'Erkennung fehlgeschlagen';
+        }
+        if (this.app) this.app.showToast(msg, 'error');
+        this.showStage(1);
+    }
+
+    /**
      * Validate file (type + size), set into session, render thumbnail, enable Erkennen.
      * @param {File} file
      */
