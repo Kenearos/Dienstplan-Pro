@@ -906,6 +906,73 @@ runner.test('Resolve: ausserhalb Monat wird uebersprungen', (t) => {
 });
 
 // ============================================================================
+// ImageImporter Tests - Error toasts (Feature A)
+// ============================================================================
+
+runner.test('ImageImporter Error: 401 = "API-Key ungueltig"', (t) => {
+    let capturedMsg = null;
+    let capturedType = null;
+    const fakeApp = {
+        showToast: (m, type) => { capturedMsg = m; capturedType = type; },
+        currentYear: 2025, currentMonth: 11,
+        storage: { getEmployees: () => [] },
+        holidayProvider: new HolidayProvider()
+    };
+    const importer = new ImageImporter(fakeApp);
+    const err = Object.assign(new Error('x'), { name: 'OpenRouterError', status: 401 });
+    importer.showStage = () => {};
+    importer.handleRecognitionError(err);
+    t.assertEqual(capturedMsg, 'API-Key ungueltig', 'Exakte Meldung');
+    t.assertEqual(capturedType, 'error', 'Typ error');
+});
+
+runner.test('ImageImporter Error: 402 = "Limit erreicht oder Guthaben aufgebraucht"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(Object.assign(new Error('x'), { name: 'OpenRouterError', status: 402 }));
+    t.assertEqual(capturedMsg, 'Limit erreicht oder Guthaben aufgebraucht', 'Exakte Meldung');
+});
+
+runner.test('ImageImporter Error: 429 = "Limit erreicht oder Guthaben aufgebraucht"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(Object.assign(new Error('x'), { name: 'OpenRouterError', status: 429 }));
+    t.assertEqual(capturedMsg, 'Limit erreicht oder Guthaben aufgebraucht', 'Exakte Meldung');
+});
+
+runner.test('ImageImporter Error: 503 = Server-Fehler', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(Object.assign(new Error('x'), { name: 'OpenRouterError', status: 503 }));
+    t.assertTrue(capturedMsg.includes('Server-Fehler'), 'Enthaelt Server-Fehler');
+    t.assertTrue(capturedMsg.includes('503'), 'Enthaelt Status');
+});
+
+runner.test('ImageImporter Error: TypeError (Offline) = "Keine Verbindung"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(new TypeError('Failed to fetch'));
+    t.assertTrue(capturedMsg.includes('Keine Verbindung'), 'Offline-Meldung');
+});
+
+runner.test('ImageImporter Error: SyntaxError = "Erkennung fehlgeschlagen"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(new SyntaxError('Unexpected token'));
+    t.assertTrue(capturedMsg.includes('Erkennung fehlgeschlagen'), 'Parse-Fehlermeldung');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
