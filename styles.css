@@ -112,6 +112,20 @@ header h1 {
     font-size: 1.2rem;
 }
 
+/* Card header (used by Bild-Import button) */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.card-header h2 {
+    margin-bottom: 0;
+}
+
 /* Form Elements */
 .form-group {
     margin-bottom: 20px;

@@ -46,6 +46,18 @@ class DienstplanApp {
         document.getElementById('month-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
         document.getElementById('year-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
 
+        // Bild-Import (Feature A)
+        const imageImportBtn = document.getElementById('open-image-import-btn');
+        if (imageImportBtn) {
+            imageImportBtn.addEventListener('click', () => {
+                if (window.imageImporter) {
+                    window.imageImporter.openImportDialog();
+                } else {
+                    this.showToast('Bild-Import nicht verfuegbar.', 'error');
+                }
+            });
+        }
+
         // Calculation
         document.getElementById('calculate-btn').addEventListener('click', () => this.calculateBonuses());
 
