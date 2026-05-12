@@ -1116,4 +1116,5 @@ class DienstplanApp {
 let app;
 document.addEventListener('DOMContentLoaded', () => {
     app = new DienstplanApp();
+    window.app = app;
 });
