@@ -274,6 +274,88 @@ class ImageImporter {
         if (isFeiertag) return 'so';
         return 'weekday';
     }
+
+    /**
+     * Entry point. Ensure API key, then open the modal on Stage 1.
+     */
+    openImportDialog() {
+        let key = this.storage.getApiKey();
+        if (!key) {
+            const promptText =
+                'Fuer die Bilderkennung wird ein OpenRouter-API-Key benoetigt.\n' +
+                'Der Key wird ausschliesslich lokal in Ihrem Browser gespeichert\n' +
+                'und nur an openrouter.ai gesendet.\n\n' +
+                'Key auf https://openrouter.ai/keys anlegen und hier eintragen:';
+            const input = window.prompt(promptText, '');
+            if (!input || !input.trim()) {
+                if (this.app) this.app.showToast('Kein API-Key gespeichert - Import abgebrochen', 'info');
+                return;
+            }
+            this.storage.setApiKey(input.trim());
+            key = input.trim();
+        }
+
+        this.session = {
+            file: null,
+            thumbnailUrl: null,
+            dataUrl: null,
+            raw: null,
+            entries: [],
+            unknowns: [],
+            resolvedNames: new Map(),
+            targetYear: this.app ? this.app.currentYear : new Date().getFullYear(),
+            targetMonth: this.app ? this.app.currentMonth : (new Date().getMonth() + 1),
+            detectedMonth: null,
+            detectedYear: null,
+            notes: []
+        };
+
+        this.wireEventsOnce();
+        this.showModal();
+        this.showStage(1);
+    }
+
+    close() {
+        if (this.session && this.session.thumbnailUrl) {
+            URL.revokeObjectURL(this.session.thumbnailUrl);
+        }
+        this.session = null;
+        if (this.abortController) {
+            try { this.abortController.abort(); } catch (e) { /* ignore */ }
+            this.abortController = null;
+        }
+        const modal = document.getElementById('image-import-modal');
+        if (modal) modal.hidden = true;
+
+        const recognizeBtn = document.getElementById('image-import-recognize-btn');
+        if (recognizeBtn) recognizeBtn.disabled = true;
+        const thumbWrap = document.getElementById('image-import-thumb-wrap');
+        if (thumbWrap) thumbWrap.hidden = true;
+        const fileInput = document.getElementById('image-import-file-input');
+        if (fileInput) fileInput.value = '';
+    }
+
+    showModal() {
+        const modal = document.getElementById('image-import-modal');
+        if (modal) modal.hidden = false;
+    }
+
+    showStage(stageId) {
+        const modal = document.getElementById('image-import-modal');
+        if (!modal) return;
+        modal.querySelectorAll('.modal-stage').forEach(s => {
+            s.hidden = (parseInt(s.dataset.stage, 10) !== stageId);
+        });
+    }
+
+    /**
+     * Placeholder until Task 9 implements full wiring. Idempotent.
+     */
+    wireEventsOnce() {
+        if (this._wired) return;
+        this._wired = true;
+        // Real handlers added in Task 9.
+    }
 }
 
 // Verbatim system prompt — German with Umlaute (per spec §7.3).
