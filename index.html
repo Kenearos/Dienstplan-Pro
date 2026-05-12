@@ -160,26 +160,44 @@
                 <h2>Einstellungen & Daten</h2>
 
                 <div class="settings-section">
-                    <h3>Berechnungsregeln</h3>
+                    <h3>Berechnungsregeln (NRW Psychiatrie 2011)</h3>
                     <div class="info-box">
-                        <h4>Qualifizierende Tage (WE/Feiertag):</h4>
+                        <h4>Tag-Klassifizierung (Slot pro Dienst):</h4>
                         <ul>
-                            <li>Freitag, Samstag, Sonntag</li>
-                            <li>Feiertage in NRW</li>
-                            <li>Tag vor einem Feiertag</li>
+                            <li><strong>fr</strong>: Freitag &middot; oder Tag vor einem Mo-Do-Feiertag</li>
+                            <li><strong>sa</strong>: Samstag &middot; oder Sandwich-Tag (Feiertag UND Tag vor Feiertag, z. B. Do Feiertag + Fr Feiertag &rarr; Do = sa)</li>
+                            <li><strong>so</strong>: Sonntag &middot; oder Mo-Do-Feiertag (ohne Sandwich)</li>
+                            <li><strong>weekday</strong>: Mo-Do ohne Feiertag und ohne Tag-vor-Feiertag</li>
                         </ul>
 
-                        <h4>Bonusberechnung:</h4>
+                        <h4>Drei Varianten (es gewinnt die mit dem h&ouml;chsten Bonus):</h4>
                         <ul>
-                            <li>Mindestens <strong>2.0 qualifizierende Tage</strong> erforderlich</li>
-                            <li>Bei Erreichen der Schwelle: <strong>1.0 qualifizierender Tag</strong> wird abgezogen</li>
-                            <li>Normale Tage: <strong>250€</strong> pro Tag</li>
-                            <li>Qualifizierende Tage: <strong>450€</strong> pro Tag</li>
-                            <li>Halbe Dienste werden mit der Hälfte berechnet</li>
+                            <li><strong>V1:</strong> fr+so &ge; 1 UND weekday &ge; 3 &rarr; Abzug 1 aus fr+so (Fr-Prio) und 3 aus weekday. sa wird voll bezahlt.</li>
+                            <li><strong>V2:</strong> sa &ge; 1 UND weekday &ge; 2 &rarr; Abzug 1 sa und 2 weekday. fr und so werden voll bezahlt.</li>
+                            <li><strong>V3 (loose):</strong> fr+sa+so &ge; 2 &rarr; Abzug 2 aus Pool, Priorit&auml;t fr &rarr; so &rarr; sa. weekday wird voll bezahlt.</li>
                         </ul>
 
-                        <h4>Wichtig:</h4>
-                        <p>Wenn weniger als 2.0 qualifizierende Tage erreicht werden, erfolgt <strong>keine Bonuszahlung</strong>.</p>
+                        <h4>Auto-Selection und Tie-Breaker:</h4>
+                        <p>Es wird die Variante mit dem h&ouml;chsten Bonus ausgew&auml;hlt. Bei Gleichstand gewinnt die niedrigste Variantennummer (V1 &lt; V2 &lt; V3).</p>
+
+                        <h4>Urlaubsmodus (&ge;14 Tage frei):</h4>
+                        <p>Toggle pro Mitarbeiter und Monat. Halbiert <strong>alle</strong> Schwellen UND Abz&uuml;ge. Halbe Werte sind explizit erlaubt.</p>
+
+                        <h4>S&auml;tze:</h4>
+                        <ul>
+                            <li>weekday: <strong>250&nbsp;&euro;</strong> pro Einheit</li>
+                            <li>fr / sa / so: <strong>450&nbsp;&euro;</strong> pro Einheit</li>
+                            <li>Halbdienste werden mit 0.5 gerechnet</li>
+                        </ul>
+
+                        <h4>Beispiele Tag-Klassifizierung:</h4>
+                        <ul>
+                            <li>Karfreitag (Fr): fr (Wochentag gewinnt)</li>
+                            <li>Ostermontag (Mo-Feiertag): so</li>
+                            <li>Christi Himmelfahrt (Do-Feiertag): so</li>
+                            <li>Mittwoch vor Christi Himmelfahrt: fr</li>
+                            <li>Tag der Deutschen Einheit 2025 (Fr): fr</li>
+                        </ul>
                     </div>
                 </div>
 
