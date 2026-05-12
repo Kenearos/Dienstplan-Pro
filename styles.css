@@ -112,6 +112,20 @@ header h1 {
     font-size: 1.2rem;
 }
 
+/* Card header (used by Bild-Import button) */
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.card-header h2 {
+    margin-bottom: 0;
+}
+
 /* Form Elements */
 .form-group {
     margin-bottom: 20px;
@@ -536,3 +550,221 @@ header h1 {
         padding: 20px 0;
     }
 }
+
+/* ============================================================
+   Bild-Import Modal (Feature A)
+   ============================================================ */
+.modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal[hidden] { display: none; }
+
+.modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    position: relative;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    padding: 30px;
+    max-width: 800px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+}
+
+.modal-stage {
+    animation: fadeIn 0.2s ease;
+}
+
+.modal-stage[hidden] { display: none; }
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.privacy-notice {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-bottom: 15px;
+    font-style: italic;
+}
+
+.drag-drop-zone {
+    border: 2px dashed #c0c0c8;
+    border-radius: 8px;
+    padding: 30px;
+    text-align: center;
+    transition: all 0.2s ease;
+    margin-bottom: 15px;
+}
+
+.drag-drop-zone.drag-over {
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.05);
+}
+
+.drag-drop-zone p {
+    margin-bottom: 15px;
+    color: #555;
+}
+
+.thumbnail-preview {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.thumbnail-preview img {
+    max-width: 240px;
+    max-height: 240px;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+.thumbnail-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.875rem;
+    color: #555;
+}
+
+.spinner {
+    width: 48px;
+    height: 48px;
+    margin: 30px auto;
+    border: 4px solid #e0e0e0;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.unknown-names-box {
+    background: #fff3cd;
+    border-left: 4px solid #ffc107;
+    border-radius: 6px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.unknown-name-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    flex-wrap: wrap;
+}
+
+.unknown-name-row:last-child { border-bottom: none; }
+
+.unknown-name-row .unknown-candidate {
+    font-weight: 600;
+    flex: 1;
+    min-width: 140px;
+}
+
+.unknown-name-row select {
+    flex: 2;
+    min-width: 180px;
+    padding: 6px 10px;
+    border: 2px solid #e0e0e0;
+    border-radius: 4px;
+}
+
+.unknown-name-row .fuzzy-hint {
+    flex-basis: 100%;
+    font-size: 0.8rem;
+    color: #856404;
+    padding-left: 4px;
+}
+
+.preview-employee-group {
+    margin-bottom: 20px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    padding: 15px;
+}
+
+.preview-employee-group h3 {
+    color: #667eea;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.preview-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.preview-table th,
+.preview-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #e0e0e0;
+    text-align: left;
+    font-size: 0.9rem;
+}
+
+.preview-table th { background: #ececf3; }
+
+.preview-row.outside-month { background: #fff0f0; }
+
+.preview-row .row-remove-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.slot-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: white;
+}
+
+.slot-badge.slot-fr { background: #fd7e14; }
+.slot-badge.slot-sa { background: #dc3545; }
+.slot-badge.slot-so { background: #dc3545; }
+.slot-badge.slot-weekday { background: #6c757d; }
+
+.api-key-status-ok { color: #28a745; font-weight: 500; }
+.api-key-status-none { color: #6c757d; font-style: italic; }

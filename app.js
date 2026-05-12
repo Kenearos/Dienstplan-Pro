@@ -46,6 +46,18 @@ class DienstplanApp {
         document.getElementById('month-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
         document.getElementById('year-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
 
+        // Bild-Import (Feature A)
+        const imageImportBtn = document.getElementById('open-image-import-btn');
+        if (imageImportBtn) {
+            imageImportBtn.addEventListener('click', () => {
+                if (window.imageImporter) {
+                    window.imageImporter.openImportDialog();
+                } else {
+                    this.showToast('Bild-Import nicht verfuegbar.', 'error');
+                }
+            });
+        }
+
         // Calculation
         document.getElementById('calculate-btn').addEventListener('click', () => this.calculateBonuses());
 
@@ -62,6 +74,21 @@ class DienstplanApp {
         document.getElementById('export-btn').addEventListener('click', () => this.exportData());
         document.getElementById('import-btn').addEventListener('click', () => this.importData());
         document.getElementById('clear-all-btn').addEventListener('click', () => this.clearAllData());
+
+        // Bild-Import (KI) settings
+        const setKeyBtn = document.getElementById('set-api-key-btn');
+        if (setKeyBtn) setKeyBtn.addEventListener('click', () => this.setApiKeyFromPrompt());
+        const clearKeyBtn = document.getElementById('clear-api-key-btn');
+        if (clearKeyBtn) clearKeyBtn.addEventListener('click', () => this.clearApiKey());
+        const modelSelect = document.getElementById('api-model-select');
+        if (modelSelect) {
+            modelSelect.value = this.storage.getApiModel();
+            modelSelect.addEventListener('change', () => {
+                this.storage.setApiModel(modelSelect.value);
+                this.showToast(`Modell geaendert: ${modelSelect.options[modelSelect.selectedIndex].text}`, 'success');
+            });
+        }
+        this.refreshApiKeyStatus();
     }
 
     /**
@@ -129,6 +156,8 @@ class DienstplanApp {
             this.loadEmployeeList();
         } else if (tabName === 'duties') {
             this.loadDutiesForSelectedEmployee();
+        } else if (tabName === 'settings') {
+            this.refreshApiKeyStatus();
         }
     }
 
@@ -1025,6 +1054,38 @@ class DienstplanApp {
     }
 
     /**
+     * Update the API-key status line in Settings.
+     */
+    refreshApiKeyStatus() {
+        const el = document.getElementById('api-key-status');
+        if (!el) return;
+        if (this.storage.getApiKey()) {
+            el.textContent = 'API-Key gespeichert';
+            el.className = 'api-key-status-ok';
+        } else {
+            el.textContent = 'Kein Key hinterlegt';
+            el.className = 'api-key-status-none';
+        }
+    }
+
+    setApiKeyFromPrompt() {
+        const input = window.prompt('OpenRouter API-Key eingeben:', '');
+        if (input === null) return;
+        const trimmed = input.trim();
+        if (!trimmed) return;
+        this.storage.setApiKey(trimmed);
+        this.refreshApiKeyStatus();
+        this.showToast('API-Key gespeichert.', 'success');
+    }
+
+    clearApiKey() {
+        if (!window.confirm('API-Key wirklich loeschen?')) return;
+        this.storage.clearApiKey();
+        this.refreshApiKeyStatus();
+        this.showToast('API-Key geloescht.', 'info');
+    }
+
+    /**
      * Show toast notification
      */
     showToast(message, type = 'info') {
@@ -1055,4 +1116,5 @@ class DienstplanApp {
 let app;
 document.addEventListener('DOMContentLoaded', () => {
     app = new DienstplanApp();
+    window.app = app;
 });

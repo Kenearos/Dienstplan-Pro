@@ -6,6 +6,9 @@ class DataStorage {
     constructor() {
         this.STORAGE_KEY_EMPLOYEES = 'dienstplan_employees';
         this.STORAGE_KEY_DUTIES = 'dienstplan_duties';
+        this.STORAGE_KEY_OPENROUTER_KEY = 'dienstplan_openrouter_key';
+        this.STORAGE_KEY_OPENROUTER_MODEL = 'dienstplan_openrouter_model';
+        this.DEFAULT_MODEL = 'anthropic/claude-sonnet-4.6';
     }
 
     /**
@@ -305,6 +308,67 @@ class DataStorage {
         } catch (e) {
             console.error('Import failed:', e);
             return false;
+        }
+    }
+
+    // ============================================================
+    // API Key / Model (Feature A: Bild-Import)
+    // Device-local config — NOT included in exportData/clearAll.
+    // ============================================================
+
+    /**
+     * @returns {string|null}
+     */
+    getApiKey() {
+        try {
+            return localStorage.getItem(this.STORAGE_KEY_OPENROUTER_KEY) || null;
+        } catch (e) {
+            console.error('Fehler beim Laden des API-Keys:', e);
+            return null;
+        }
+    }
+
+    /**
+     * @param {string} key
+     */
+    setApiKey(key) {
+        try {
+            localStorage.setItem(this.STORAGE_KEY_OPENROUTER_KEY, String(key));
+        } catch (e) {
+            console.error('Fehler beim Speichern des API-Keys:', e);
+            throw e;
+        }
+    }
+
+    clearApiKey() {
+        try {
+            localStorage.removeItem(this.STORAGE_KEY_OPENROUTER_KEY);
+        } catch (e) {
+            console.error('Fehler beim Loeschen des API-Keys:', e);
+        }
+    }
+
+    /**
+     * @returns {string}
+     */
+    getApiModel() {
+        try {
+            return localStorage.getItem(this.STORAGE_KEY_OPENROUTER_MODEL) || this.DEFAULT_MODEL;
+        } catch (e) {
+            console.error('Fehler beim Laden des Modells:', e);
+            return this.DEFAULT_MODEL;
+        }
+    }
+
+    /**
+     * @param {string} modelId
+     */
+    setApiModel(modelId) {
+        try {
+            localStorage.setItem(this.STORAGE_KEY_OPENROUTER_MODEL, String(modelId));
+        } catch (e) {
+            console.error('Fehler beim Speichern des Modells:', e);
+            throw e;
         }
     }
 }

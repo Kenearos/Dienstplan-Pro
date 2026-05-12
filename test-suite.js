@@ -474,6 +474,505 @@ runner.test('Edge Case: Dienst am 29. Februar (Schaltjahr)', (t) => {
 });
 
 // ============================================================================
+// Storage Tests - API Key / Model (Feature A)
+// ============================================================================
+
+runner.test('Storage API Key: setApiKey/getApiKey round-trip', (t) => {
+    const storage = new DataStorage();
+    storage.clearApiKey();
+    storage.setApiKey('sk-or-test-12345');
+    t.assertEqual(storage.getApiKey(), 'sk-or-test-12345', 'Key sollte gespeichert sein');
+    storage.clearApiKey();
+});
+
+runner.test('Storage API Key: getApiKey ohne gesetzten Wert liefert null', (t) => {
+    const storage = new DataStorage();
+    storage.clearApiKey();
+    t.assertEqual(storage.getApiKey(), null, 'Sollte null sein');
+});
+
+runner.test('Storage API Key: clearApiKey entfernt den Key', (t) => {
+    const storage = new DataStorage();
+    storage.setApiKey('sk-or-test');
+    storage.clearApiKey();
+    t.assertEqual(storage.getApiKey(), null, 'Key sollte gelöscht sein');
+});
+
+runner.test('Storage API Model: Default ist anthropic/claude-sonnet-4.6', (t) => {
+    const storage = new DataStorage();
+    localStorage.removeItem('dienstplan_openrouter_model');
+    t.assertEqual(storage.getApiModel(), 'anthropic/claude-sonnet-4.6', 'Default-Modell');
+});
+
+runner.test('Storage API Model: setApiModel/getApiModel round-trip', (t) => {
+    const storage = new DataStorage();
+    storage.setApiModel('google/gemini-2.5-pro');
+    t.assertEqual(storage.getApiModel(), 'google/gemini-2.5-pro', 'Modell sollte gespeichert sein');
+    localStorage.removeItem('dienstplan_openrouter_model');
+});
+
+runner.test('Storage API Key: exportData enthält keinen API-Key', (t) => {
+    const storage = new DataStorage();
+    storage.setApiKey('sk-or-secret');
+    const exported = storage.exportData();
+    t.assertFalse(exported.includes('sk-or-secret'), 'Key darf nicht im Export sein');
+    storage.clearApiKey();
+});
+
+runner.test('Storage API Key: clearAll laesst API-Key unberuehrt', (t) => {
+    const storage = new DataStorage();
+    storage.setApiKey('sk-or-keep');
+    storage.clearAll();
+    t.assertEqual(storage.getApiKey(), 'sk-or-keep', 'Key sollte clearAll ueberleben');
+    storage.clearApiKey();
+});
+
+// ============================================================================
+// ImageImporter Tests - Preprocessing (Feature A)
+// ============================================================================
+
+/**
+ * Helper: build a synthetic image File from a canvas.
+ */
+async function makeTestImageFile(width, height, mime = 'image/png') {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#3366cc';
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '32px sans-serif';
+    ctx.fillText('TEST', 20, 50);
+    const blob = await new Promise(res => canvas.toBlob(res, mime));
+    return new File([blob], 'test.png', { type: mime });
+}
+
+runner.test('Preprocess: 4000x3000 wird auf laengste Kante 2048 skaliert', async (t) => {
+    const importer = new ImageImporter(null);
+    const file = await makeTestImageFile(4000, 3000);
+    const result = await importer.compressImage(file);
+    t.assertEqual(result.width, 2048, 'Breite sollte 2048 sein');
+    t.assertEqual(result.height, 1536, 'Hoehe sollte 1536 sein (Seitenverhaeltnis erhalten)');
+    t.assertTrue(result.dataUrl.startsWith('data:image/jpeg;base64,'), 'dataUrl-Prefix korrekt');
+});
+
+runner.test('Preprocess: 800x600 bleibt unveraendert (kein Upscale)', async (t) => {
+    const importer = new ImageImporter(null);
+    const file = await makeTestImageFile(800, 600);
+    const result = await importer.compressImage(file);
+    t.assertEqual(result.width, 800, 'Breite unveraendert');
+    t.assertEqual(result.height, 600, 'Hoehe unveraendert');
+});
+
+runner.test('Preprocess: Output ist immer JPEG', async (t) => {
+    const importer = new ImageImporter(null);
+    const file = await makeTestImageFile(500, 500, 'image/png');
+    const result = await importer.compressImage(file);
+    t.assertTrue(result.dataUrl.startsWith('data:image/jpeg;base64,'), 'Output ist JPEG');
+    t.assertTrue(result.dataUrl.length > 1000, 'Output-Laenge > 1KB');
+});
+
+// ============================================================================
+// ImageImporter Tests - callVisionAPI (Feature A)
+// ============================================================================
+
+/**
+ * Helper to mock fetch and restore it.
+ */
+function withMockedFetch(mockFn, fn) {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mockFn;
+    const restore = () => { globalThis.fetch = originalFetch; };
+    return Promise.resolve(fn()).finally(restore);
+}
+
+runner.test('CallVisionAPI: erfolgreicher 200-Response', async (t) => {
+    const importer = new ImageImporter(null);
+    let capturedUrl = null;
+    let capturedInit = null;
+    const mockFetch = async (url, init) => {
+        capturedUrl = url;
+        capturedInit = init;
+        return new Response(JSON.stringify({
+            choices: [{ message: { content: '{"entries":[]}' } }]
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    await withMockedFetch(mockFetch, async () => {
+        const content = await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'sk-test', 'anthropic/claude-sonnet-4.6');
+        t.assertEqual(content, '{"entries":[]}', 'Content extrahiert');
+        t.assertEqual(capturedUrl, 'https://openrouter.ai/api/v1/chat/completions', 'Endpoint korrekt');
+        t.assertTrue(capturedInit.headers['Authorization'] === 'Bearer sk-test', 'Auth-Header korrekt');
+    });
+});
+
+runner.test('CallVisionAPI: 401 wirft mit Status', async (t) => {
+    const importer = new ImageImporter(null);
+    const mockFetch = async () => new Response('', { status: 401 });
+    await withMockedFetch(mockFetch, async () => {
+        try {
+            await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'bad', 'anthropic/claude-sonnet-4.6');
+            t.assertTrue(false, 'Sollte werfen');
+        } catch (e) {
+            t.assertEqual(e.status, 401, 'Status auf Error');
+            t.assertEqual(e.name, 'OpenRouterError', 'Typisierter Fehler');
+        }
+    });
+});
+
+runner.test('CallVisionAPI: 429 wirft mit Status', async (t) => {
+    const importer = new ImageImporter(null);
+    const mockFetch = async () => new Response('', { status: 429 });
+    await withMockedFetch(mockFetch, async () => {
+        try {
+            await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'k', 'm');
+            t.assertTrue(false, 'Sollte werfen');
+        } catch (e) {
+            t.assertEqual(e.status, 429, '429 wird durchgereicht');
+        }
+    });
+});
+
+runner.test('CallVisionAPI: 503 wirft mit Status', async (t) => {
+    const importer = new ImageImporter(null);
+    const mockFetch = async () => new Response('', { status: 503 });
+    await withMockedFetch(mockFetch, async () => {
+        try {
+            await importer.callVisionAPI('data:image/jpeg;base64,AAA', 'k', 'm');
+            t.assertTrue(false, 'Sollte werfen');
+        } catch (e) {
+            t.assertEqual(e.status, 503, '503 wird durchgereicht');
+        }
+    });
+});
+
+// ============================================================================
+// ImageImporter Tests - parseResponse (Feature A)
+// ============================================================================
+
+runner.test('Parse: cleanes JSON wird geparst', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"month":11,"year":2025,"entries":[{"name":"Max","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, '1 Eintrag');
+    t.assertEqual(result.entries[0].name, 'Max', 'Name korrekt');
+    t.assertEqual(result.month, 11, 'Monat korrekt');
+});
+
+runner.test('Parse: JSON in Markdown-Fence wird gestrippt', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '```json\n{"entries":[{"name":"A","date":"2025-11-22","share":0.5}],"notes":[]}\n```';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Fence wurde entfernt');
+});
+
+runner.test('Parse: JSON mit Vortext wird per Brace-Slicing extrahiert', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = 'Hier das Ergebnis:\n{"entries":[{"name":"A","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Vortext ignoriert');
+});
+
+runner.test('Parse: Malformed JSON wirft SyntaxError', (t) => {
+    const importer = new ImageImporter(null);
+    try {
+        importer.parseResponse('das ist kein JSON');
+        t.assertTrue(false, 'Sollte werfen');
+    } catch (e) {
+        t.assertTrue(e instanceof SyntaxError || e.name === 'SyntaxError' || /JSON|Parse/i.test(e.message), 'SyntaxError erwartet');
+    }
+});
+
+runner.test('Parse: fehlendes entries-Feld wirft', (t) => {
+    const importer = new ImageImporter(null);
+    try {
+        importer.parseResponse('{"month":11,"year":2025,"notes":[]}');
+        t.assertTrue(false, 'Sollte werfen');
+    } catch (e) {
+        t.assertTrue(/entries/i.test(e.message), 'Fehlermeldung erwaehnt entries');
+    }
+});
+
+runner.test('Parse: share=0.75 verwirft den Eintrag', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"entries":[{"name":"A","date":"2025-11-22","share":0.75},{"name":"B","date":"2025-11-23","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Nur gueltiger Eintrag bleibt');
+    t.assertEqual(result.entries[0].name, 'B', 'B uebrig');
+});
+
+runner.test('Parse: invalides Datum verwirft den Eintrag', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"entries":[{"name":"A","date":"31.11.2025","share":1.0},{"name":"B","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Nur ISO-Datum bleibt');
+    t.assertEqual(result.entries[0].name, 'B', 'B uebrig');
+});
+
+runner.test('Parse: leerer Name wird verworfen', (t) => {
+    const importer = new ImageImporter(null);
+    const raw = '{"entries":[{"name":"   ","date":"2025-11-22","share":1.0},{"name":"B","date":"2025-11-22","share":1.0}],"notes":[]}';
+    const result = importer.parseResponse(raw);
+    t.assertEqual(result.entries.length, 1, 'Nur gueltiger Name bleibt');
+});
+
+// ============================================================================
+// ImageImporter Tests - Levenshtein (Feature A)
+// ============================================================================
+
+runner.test('Levenshtein: identische Strings = 0', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('max mustermann', 'max mustermann'), 0, 'Identisch');
+});
+
+runner.test('Levenshtein: leerer String', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('', 'abc'), 3, '0 vs 3 Zeichen');
+    t.assertEqual(importer.levenshtein('abc', ''), 3, '3 vs 0 Zeichen');
+    t.assertEqual(importer.levenshtein('', ''), 0, 'Beide leer');
+});
+
+runner.test('Levenshtein: 1 Substitution', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('abc', 'abd'), 1, '1 Subst');
+});
+
+runner.test('Levenshtein: 1 Insertion', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('max mustermann', 'max mustermannn'), 1, '1 zusaetzliches n');
+});
+
+runner.test('Levenshtein: 2 Distanz', (t) => {
+    const importer = new ImageImporter(null);
+    t.assertEqual(importer.levenshtein('mueller', 'mueler'), 1, 'ein l weniger');
+});
+
+// ============================================================================
+// ImageImporter Tests - normalizeName, matchNames, classify (Feature A)
+// ============================================================================
+
+runner.test('Match: exakter Match (case + whitespace identisch)', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Max Mustermann', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.matched.length, 1, '1 zugeordnet');
+    t.assertEqual(r.matched[0].resolvedName, 'Max Mustermann', 'Direkt aufgeloest');
+    t.assertEqual(r.unknowns.length, 0, 'Keine Unknowns');
+});
+
+runner.test('Match: normalisierter Match (Whitespace + Case)', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: '  MAX   mustermann  ', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.matched.length, 1, '1 zugeordnet');
+    t.assertEqual(r.matched[0].resolvedName, 'Max Mustermann', 'Normalisiert aufgeloest');
+});
+
+runner.test('Match: Fuzzy mit Distance 1', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Max Mustermannn', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.matched.length, 0, 'Nicht automatisch gematcht');
+    t.assertEqual(r.unknowns.length, 1, '1 Unknown');
+    t.assertEqual(r.unknowns[0].suggested, 'Max Mustermann', 'Vorschlag = naechster');
+    t.assertEqual(r.unknowns[0].candidate, 'Max Mustermannn', 'Original-Kandidat');
+});
+
+runner.test('Match: Distance > 2 ohne Vorschlag', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Egon Olsen', date: '2025-11-22', share: 1.0 }],
+        ['Max Mustermann']
+    );
+    t.assertEqual(r.unknowns.length, 1, '1 Unknown');
+    t.assertEqual(r.unknowns[0].suggested, null, 'Kein Vorschlag');
+});
+
+runner.test('Match: leere Employee-Liste alle Unknowns', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Max', date: '2025-11-22', share: 1.0 }],
+        []
+    );
+    t.assertEqual(r.unknowns.length, 1, 'Unknown');
+    t.assertEqual(r.unknowns[0].suggested, null, 'Kein Vorschlag moeglich');
+});
+
+runner.test('Match: mehrere Fuzzy-Treffer gleiche Distanz alphabetisch erster', (t) => {
+    const importer = new ImageImporter(null);
+    const r = importer.matchNames(
+        [{ name: 'Anne', date: '2025-11-22', share: 1.0 }],
+        ['Anna', 'Anni']
+    );
+    t.assertEqual(r.unknowns[0].suggested, 'Anna', 'Alphabetisch erster');
+});
+
+runner.test('Classify: Freitag = fr', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const fri = new Date('2025-11-21T12:00:00');
+    t.assertEqual(importer.classify(fri), 'fr', 'Freitag');
+});
+
+runner.test('Classify: Samstag = sa', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const sat = new Date('2025-11-22T12:00:00');
+    t.assertEqual(importer.classify(sat), 'sa', 'Samstag');
+});
+
+runner.test('Classify: Feiertag (Werktag) = so', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const may1 = new Date('2025-05-01T12:00:00');
+    t.assertEqual(importer.classify(may1), 'so', 'Feiertag = so');
+});
+
+runner.test('Classify: Tag vor Feiertag (Werktag) = fr', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const apr30 = new Date('2025-04-30T12:00:00');
+    t.assertEqual(importer.classify(apr30), 'fr', 'Tag vor Feiertag');
+});
+
+runner.test('Classify: Werktag = weekday', (t) => {
+    const importer = new ImageImporter(null);
+    importer.holidayProvider = new HolidayProvider();
+    const mon = new Date('2025-11-24T12:00:00');
+    t.assertEqual(importer.classify(mon), 'weekday', 'Werktag');
+});
+
+// ============================================================================
+// ImageImporter Tests - resolveImports (pure) (Feature A)
+// ============================================================================
+
+runner.test('Resolve: gemischte unknowns (new + assign + ignore)', (t) => {
+    const importer = new ImageImporter(null);
+    const session = {
+        entries: [
+            { name: 'Max Mustermann', date: new Date('2025-11-22T12:00:00'), dateStr: '2025-11-22', share: 1.0 },
+            { name: 'Max Mustermannn', date: new Date('2025-11-23T12:00:00'), dateStr: '2025-11-23', share: 0.5 },
+            { name: 'Egon Olsen', date: new Date('2025-11-28T12:00:00'), dateStr: '2025-11-28', share: 1.0 },
+            { name: 'Hugo Ignored', date: new Date('2025-11-29T12:00:00'), dateStr: '2025-11-29', share: 1.0 }
+        ],
+        unknowns: [
+            { candidate: 'Max Mustermannn', suggested: 'Max Mustermann', choice: 'assign:Max Mustermann' },
+            { candidate: 'Egon Olsen', suggested: null, choice: 'new' },
+            { candidate: 'Hugo Ignored', suggested: null, choice: 'ignore' }
+        ],
+        resolvedNames: new Map([['Max Mustermann', 'Max Mustermann']]),
+        targetYear: 2025,
+        targetMonth: 11
+    };
+    const plan = importer.resolveImports(session);
+    t.assertEqual(plan.newEmployees.length, 1, '1 neuer MA');
+    t.assertEqual(plan.newEmployees[0], 'Egon Olsen', 'Egon ist neu');
+    t.assertEqual(plan.commits.length, 3, '3 Commits (Hugo ignoriert)');
+    t.assertEqual(plan.skippedOutsideMonth, 0, 'Keine ausserhalb Monat');
+
+    const max22 = plan.commits.find(c => c.employeeName === 'Max Mustermann' && c.dateStr === '2025-11-22');
+    t.assertTrue(!!max22, 'Max am 22.11 vorhanden');
+    t.assertEqual(max22.share, 1.0, 'Share 1.0');
+
+    const maxFromFuzzy = plan.commits.find(c => c.employeeName === 'Max Mustermann' && c.dateStr === '2025-11-23');
+    t.assertTrue(!!maxFromFuzzy, 'Fuzzy-Match wurde aufgeloest');
+    t.assertEqual(maxFromFuzzy.share, 0.5, 'Share 0.5');
+
+    const egon = plan.commits.find(c => c.employeeName === 'Egon Olsen');
+    t.assertTrue(!!egon, 'Egon committed');
+});
+
+runner.test('Resolve: ausserhalb Monat wird uebersprungen', (t) => {
+    const importer = new ImageImporter(null);
+    const session = {
+        entries: [
+            { name: 'A', date: new Date('2025-11-22T12:00:00'), dateStr: '2025-11-22', share: 1.0 },
+            { name: 'A', date: new Date('2025-12-01T12:00:00'), dateStr: '2025-12-01', share: 1.0 }
+        ],
+        unknowns: [{ candidate: 'A', suggested: null, choice: 'new' }],
+        resolvedNames: new Map(),
+        targetYear: 2025,
+        targetMonth: 11
+    };
+    const plan = importer.resolveImports(session);
+    t.assertEqual(plan.commits.length, 1, 'Nur November-Eintrag bleibt');
+    t.assertEqual(plan.skippedOutsideMonth, 1, '1 uebersprungen');
+});
+
+// ============================================================================
+// ImageImporter Tests - Error toasts (Feature A)
+// ============================================================================
+
+runner.test('ImageImporter Error: 401 = "API-Key ungueltig"', (t) => {
+    let capturedMsg = null;
+    let capturedType = null;
+    const fakeApp = {
+        showToast: (m, type) => { capturedMsg = m; capturedType = type; },
+        currentYear: 2025, currentMonth: 11,
+        storage: { getEmployees: () => [] },
+        holidayProvider: new HolidayProvider()
+    };
+    const importer = new ImageImporter(fakeApp);
+    const err = Object.assign(new Error('x'), { name: 'OpenRouterError', status: 401 });
+    importer.showStage = () => {};
+    importer.handleRecognitionError(err);
+    t.assertEqual(capturedMsg, 'API-Key ungueltig', 'Exakte Meldung');
+    t.assertEqual(capturedType, 'error', 'Typ error');
+});
+
+runner.test('ImageImporter Error: 402 = "Limit erreicht oder Guthaben aufgebraucht"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(Object.assign(new Error('x'), { name: 'OpenRouterError', status: 402 }));
+    t.assertEqual(capturedMsg, 'Limit erreicht oder Guthaben aufgebraucht', 'Exakte Meldung');
+});
+
+runner.test('ImageImporter Error: 429 = "Limit erreicht oder Guthaben aufgebraucht"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(Object.assign(new Error('x'), { name: 'OpenRouterError', status: 429 }));
+    t.assertEqual(capturedMsg, 'Limit erreicht oder Guthaben aufgebraucht', 'Exakte Meldung');
+});
+
+runner.test('ImageImporter Error: 503 = Server-Fehler', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(Object.assign(new Error('x'), { name: 'OpenRouterError', status: 503 }));
+    t.assertTrue(capturedMsg.includes('Server-Fehler'), 'Enthaelt Server-Fehler');
+    t.assertTrue(capturedMsg.includes('503'), 'Enthaelt Status');
+});
+
+runner.test('ImageImporter Error: TypeError (Offline) = "Keine Verbindung"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(new TypeError('Failed to fetch'));
+    t.assertTrue(capturedMsg.includes('Keine Verbindung'), 'Offline-Meldung');
+});
+
+runner.test('ImageImporter Error: SyntaxError = "Erkennung fehlgeschlagen"', (t) => {
+    let capturedMsg = null;
+    const fakeApp = { showToast: (m) => { capturedMsg = m; }, holidayProvider: new HolidayProvider() };
+    const importer = new ImageImporter(fakeApp);
+    importer.showStage = () => {};
+    importer.handleRecognitionError(new SyntaxError('Unexpected token'));
+    t.assertTrue(capturedMsg.includes('Erkennung fehlgeschlagen'), 'Parse-Fehlermeldung');
+});
+
+// ============================================================================
 // Display Functions
 // ============================================================================
 
@@ -505,6 +1004,8 @@ async function runAllTests() {
         'Calculator - Tag-Klassifizierung': [],
         'Calculator - Bonusberechnung': [],
         'Storage': [],
+        'Storage API Key': [],
+        'Image Importer': [],
         'Edge Cases': []
     };
 
@@ -515,8 +1016,12 @@ async function runAllTests() {
             categories['Calculator - Tag-Klassifizierung'].push(result);
         } else if (result.name.includes('Berechnung:')) {
             categories['Calculator - Bonusberechnung'].push(result);
+        } else if (result.name.startsWith('Storage API')) {
+            categories['Storage API Key'].push(result);
         } else if (result.name.includes('Storage:')) {
             categories['Storage'].push(result);
+        } else if (result.name.startsWith('ImageImporter') || result.name.startsWith('Levenshtein') || result.name.startsWith('Parse') || result.name.startsWith('Match') || result.name.startsWith('Preprocess') || result.name.startsWith('Resolve') || result.name.startsWith('CallVision') || result.name.startsWith('Classify')) {
+            categories['Image Importer'].push(result);
         } else if (result.name.includes('Edge Case:')) {
             categories['Edge Cases'].push(result);
         }
