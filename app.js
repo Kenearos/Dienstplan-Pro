@@ -335,9 +335,17 @@ class DienstplanApp {
 
         const month = parseInt(monthSelect.value);
         const year = parseInt(yearSelect.value);
+        const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
 
         const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
-        const results = this.calculator.calculateAllEmployees(employeeDuties);
+
+        // Build vacation map for this month: { name: boolean }
+        const vacationMap = {};
+        Object.keys(employeeDuties).forEach(name => {
+            vacationMap[name] = this.storage.getVacationMode(name, yearMonth);
+        });
+
+        const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
         const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
                           'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
@@ -349,6 +357,9 @@ class DienstplanApp {
             resultsContainer.innerHTML += '<p class="text-muted">Keine Daten verfügbar.</p>';
             return;
         }
+
+        // Stash current calc context for vacation-toggle handler
+        this._currentCalcContext = { year, month, yearMonth };
 
         employees.forEach(employeeName => {
             const result = results[employeeName];
