@@ -5,7 +5,8 @@
 class DataStorage {
     constructor() {
         this.STORAGE_KEY_EMPLOYEES = 'dienstplan_employees';
-        this.STORAGE_KEY_DUTIES = 'dienstplan_duties';
+        this.STORAGE_KEY_DUTIES    = 'dienstplan_duties';
+        this.STORAGE_KEY_VACATION  = 'dienstplan_vacation';
     }
 
     /**
@@ -261,11 +262,63 @@ class DataStorage {
     }
 
     /**
+     * Get vacation mode for an employee in a specific month.
+     * @param {string} employeeName
+     * @param {string} yearMonth - format "YYYY-MM"
+     * @returns {boolean}
+     */
+    getVacationMode(employeeName, yearMonth) {
+        try {
+            const raw = localStorage.getItem(this.STORAGE_KEY_VACATION);
+            if (!raw) return false;
+            const map = JSON.parse(raw);
+            if (!map || typeof map !== 'object') return false;
+            return Boolean(map[employeeName] && map[employeeName][yearMonth]);
+        } catch (e) {
+            console.error('Fehler beim Laden des Urlaubsmodus:', e);
+            return false;
+        }
+    }
+
+    /**
+     * Set vacation mode for an employee in a specific month.
+     */
+    setVacationMode(employeeName, yearMonth, value) {
+        try {
+            const raw = localStorage.getItem(this.STORAGE_KEY_VACATION);
+            const map = raw ? JSON.parse(raw) : {};
+            if (!map[employeeName]) map[employeeName] = {};
+            map[employeeName][yearMonth] = Boolean(value);
+            localStorage.setItem(this.STORAGE_KEY_VACATION, JSON.stringify(map));
+        } catch (e) {
+            console.error('Fehler beim Speichern des Urlaubsmodus:', e);
+            throw e;
+        }
+    }
+
+    /**
+     * Get the full vacation map ({ name: { yearMonth: bool } }).
+     */
+    getAllVacationModes() {
+        try {
+            const raw = localStorage.getItem(this.STORAGE_KEY_VACATION);
+            if (!raw) return {};
+            const map = JSON.parse(raw);
+            if (!map || typeof map !== 'object') return {};
+            return map;
+        } catch (e) {
+            console.error('Fehler beim Laden des Urlaubsmodus:', e);
+            return {};
+        }
+    }
+
+    /**
      * Clear all data
      */
     clearAll() {
         localStorage.removeItem(this.STORAGE_KEY_EMPLOYEES);
         localStorage.removeItem(this.STORAGE_KEY_DUTIES);
+        localStorage.removeItem(this.STORAGE_KEY_VACATION);
     }
 
     /**
@@ -276,7 +329,8 @@ class DataStorage {
         try {
             return JSON.stringify({
                 employees: this.getEmployees(),
-                duties: this.getAllDuties()
+                duties: this.getAllDuties(),
+                vacation: this.getAllVacationModes()
             }, null, 2);
         } catch (e) {
             console.error('Fehler beim Exportieren der Daten:', e);
@@ -296,11 +350,12 @@ class DataStorage {
             if (data.employees) {
                 this.saveEmployees(data.employees);
             }
-
             if (data.duties) {
                 this.saveAllDuties(data.duties);
             }
-
+            if (data.vacation && typeof data.vacation === 'object') {
+                localStorage.setItem(this.STORAGE_KEY_VACATION, JSON.stringify(data.vacation));
+            }
             return true;
         } catch (e) {
             console.error('Import failed:', e);

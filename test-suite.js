@@ -394,6 +394,77 @@ runner.test('Storage: Export und Import', (t) => {
 });
 
 // ============================================================================
+// Storage - Vacation Mode
+// ============================================================================
+
+runner.test('Storage: getVacationMode fuer unbekannten MA -> false', (t) => {
+    const storage = new DataStorage();
+    storage.clearAll();
+    t.assertFalse(storage.getVacationMode('Niemand', '2025-11'), 'leerer Default false');
+});
+
+runner.test('Storage: setVacationMode -> getVacationMode round-trip', (t) => {
+    const storage = new DataStorage();
+    storage.clearAll();
+    storage.setVacationMode('Max Mustermann', '2025-11', true);
+    t.assertTrue(storage.getVacationMode('Max Mustermann', '2025-11'), 'true round-trip');
+    t.assertFalse(storage.getVacationMode('Max Mustermann', '2025-12'), 'anderer Monat = false');
+    t.assertFalse(storage.getVacationMode('Anna Schmidt', '2025-11'), 'anderer MA = false');
+});
+
+runner.test('Storage: setVacationMode kann zurueckgesetzt werden', (t) => {
+    const storage = new DataStorage();
+    storage.clearAll();
+    storage.setVacationMode('Max Mustermann', '2025-11', true);
+    storage.setVacationMode('Max Mustermann', '2025-11', false);
+    t.assertFalse(storage.getVacationMode('Max Mustermann', '2025-11'), 'wieder false');
+});
+
+runner.test('Storage: Export enthaelt dienstplan_vacation', (t) => {
+    const storage = new DataStorage();
+    storage.clearAll();
+    storage.addEmployee('Max Mustermann');
+    storage.setVacationMode('Max Mustermann', '2025-11', true);
+    const exported = storage.exportData();
+    const parsed = JSON.parse(exported);
+    t.assertTrue('vacation' in parsed, 'vacation key im Export');
+    t.assertEqual(parsed.vacation['Max Mustermann']['2025-11'], true, 'Wert exportiert');
+});
+
+runner.test('Storage: Import restauriert vacation', (t) => {
+    const storage1 = new DataStorage();
+    storage1.clearAll();
+    storage1.addEmployee('Max Mustermann');
+    storage1.setVacationMode('Max Mustermann', '2025-11', true);
+    const exported = storage1.exportData();
+
+    const storage2 = new DataStorage();
+    storage2.clearAll();
+    const ok = storage2.importData(exported);
+    t.assertTrue(ok, 'Import success');
+    t.assertTrue(storage2.getVacationMode('Max Mustermann', '2025-11'), 'vacation restauriert');
+});
+
+runner.test('Storage: Import ohne vacation-Feld bleibt fehlerfrei', (t) => {
+    const storage = new DataStorage();
+    storage.clearAll();
+    const legacyJson = JSON.stringify({
+        employees: ['Max Mustermann'],
+        duties: {}
+    });
+    const ok = storage.importData(legacyJson);
+    t.assertTrue(ok, 'Legacy import erfolgreich');
+    t.assertFalse(storage.getVacationMode('Max Mustermann', '2025-11'), 'Default false');
+});
+
+runner.test('Storage: clearAll entfernt auch vacation', (t) => {
+    const storage = new DataStorage();
+    storage.setVacationMode('Max Mustermann', '2025-11', true);
+    storage.clearAll();
+    t.assertFalse(storage.getVacationMode('Max Mustermann', '2025-11'), 'nach clearAll false');
+});
+
+// ============================================================================
 // Edge Cases & Regression Tests
 // ============================================================================
 
