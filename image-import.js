@@ -349,12 +349,93 @@ class ImageImporter {
     }
 
     /**
-     * Placeholder until Task 9 implements full wiring. Idempotent.
+     * Attach DOM event listeners. Called lazily on first openImportDialog.
+     * Safe to call multiple times (idempotent via this._wired flag).
      */
     wireEventsOnce() {
         if (this._wired) return;
         this._wired = true;
-        // Real handlers added in Task 9.
+
+        const closeBtn = document.getElementById('image-import-close-btn');
+        const cancel1 = document.getElementById('image-import-cancel-1-btn');
+        const cancel3 = document.getElementById('image-import-cancel-3-btn');
+        [closeBtn, cancel1, cancel3].forEach(b => {
+            if (b) b.addEventListener('click', () => this.close());
+        });
+
+        const cancel2 = document.getElementById('image-import-cancel-2-btn');
+        if (cancel2) cancel2.addEventListener('click', () => {
+            if (this.abortController) {
+                try { this.abortController.abort(); } catch (e) { /* ignore */ }
+            }
+            this.close();
+        });
+
+        const fileInput = document.getElementById('image-import-file-input');
+        const pickBtn = document.getElementById('image-import-pick-btn');
+        if (pickBtn) pickBtn.addEventListener('click', () => fileInput && fileInput.click());
+        if (fileInput) fileInput.addEventListener('change', (e) => {
+            const f = e.target.files && e.target.files[0];
+            if (f) this.onFileSelected(f);
+        });
+
+        const cameraInput = document.getElementById('image-import-camera-input');
+        const cameraBtn = document.getElementById('image-import-camera-btn');
+        if (cameraBtn) cameraBtn.addEventListener('click', () => cameraInput && cameraInput.click());
+        if (cameraInput) cameraInput.addEventListener('change', (e) => {
+            const f = e.target.files && e.target.files[0];
+            if (f) this.onFileSelected(f);
+        });
+
+        const dz = document.getElementById('image-import-dropzone');
+        if (dz) {
+            dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('drag-over'); });
+            dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+            dz.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dz.classList.remove('drag-over');
+                const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                if (f) this.onFileSelected(f);
+            });
+        }
+
+        const recognizeBtn = document.getElementById('image-import-recognize-btn');
+        if (recognizeBtn) recognizeBtn.addEventListener('click', () => this.runRecognition());
+
+        const confirmBtn = document.getElementById('image-import-confirm-btn');
+        if (confirmBtn) confirmBtn.addEventListener('click', () => this.commitImport());
+    }
+
+    /**
+     * Validate file (type + size), set into session, render thumbnail, enable Erkennen.
+     * @param {File} file
+     */
+    onFileSelected(file) {
+        if (!file.type || !file.type.startsWith('image/')) {
+            if (this.app) this.app.showToast('Nur Bildformate werden unterstuetzt', 'error');
+            return;
+        }
+        const MAX = 20 * 1024 * 1024;
+        if (file.size > MAX) {
+            if (this.app) this.app.showToast('Bild zu gross (max. 20 MB)', 'error');
+            return;
+        }
+
+        if (this.session.thumbnailUrl) URL.revokeObjectURL(this.session.thumbnailUrl);
+        this.session.file = file;
+        this.session.thumbnailUrl = URL.createObjectURL(file);
+
+        const wrap = document.getElementById('image-import-thumb-wrap');
+        const img = document.getElementById('image-import-thumb');
+        const nameEl = document.getElementById('image-import-thumb-name');
+        const sizeEl = document.getElementById('image-import-thumb-size');
+        if (img) img.src = this.session.thumbnailUrl;
+        if (nameEl) nameEl.textContent = file.name;
+        if (sizeEl) sizeEl.textContent = `${Math.round(file.size / 1024)} KB`;
+        if (wrap) wrap.hidden = false;
+
+        const recognizeBtn = document.getElementById('image-import-recognize-btn');
+        if (recognizeBtn) recognizeBtn.disabled = false;
     }
 }
 

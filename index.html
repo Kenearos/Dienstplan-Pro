@@ -209,6 +209,72 @@
         </div>
     </div>
 
+    <!-- Bild-Import Modal (Feature A) -->
+    <div id="image-import-modal" class="modal" hidden>
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <button class="modal-close" id="image-import-close-btn" aria-label="Schliessen">&times;</button>
+
+            <!-- Stage 1: Upload -->
+            <div class="modal-stage" data-stage="1">
+                <h2>Bild importieren - Schritt 1: Bild auswählen</h2>
+                <p class="privacy-notice">Das Bild wird zur Erkennung an OpenRouter gesendet.</p>
+
+                <div class="drag-drop-zone" id="image-import-dropzone">
+                    <p>Bild hier ablegen oder Datei auswählen</p>
+                    <input type="file" id="image-import-file-input" accept="image/png,image/jpeg,image/webp" hidden>
+                    <button class="btn btn-secondary" id="image-import-pick-btn">Datei auswählen</button>
+                    <input type="file" id="image-import-camera-input" accept="image/*" capture="environment" hidden>
+                    <button class="btn btn-secondary" id="image-import-camera-btn">Mit Kamera aufnehmen</button>
+                </div>
+
+                <div class="thumbnail-preview" id="image-import-thumb-wrap" hidden>
+                    <img id="image-import-thumb" alt="Vorschau">
+                    <div class="thumbnail-meta">
+                        <span id="image-import-thumb-name"></span>
+                        <span id="image-import-thumb-size"></span>
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" id="image-import-cancel-1-btn">Abbrechen</button>
+                    <button class="btn btn-primary" id="image-import-recognize-btn" disabled>Erkennen</button>
+                </div>
+            </div>
+
+            <!-- Stage 2: Processing -->
+            <div class="modal-stage" data-stage="2" hidden>
+                <h2>Analysiere Bild...</h2>
+                <div class="spinner"></div>
+                <p class="text-muted">Das kann 5-15 Sekunden dauern.</p>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" id="image-import-cancel-2-btn">Abbrechen</button>
+                </div>
+            </div>
+
+            <!-- Stage 3: Preview & Confirm -->
+            <div class="modal-stage" data-stage="3" hidden>
+                <h2>Vorschau und Bestätigen</h2>
+                <div id="image-import-notes-box"></div>
+                <div class="unknown-names-box" id="image-import-unknowns-box" hidden>
+                    <h3>Unbekannte Namen</h3>
+                    <div id="image-import-unknowns-list"></div>
+                </div>
+                <div id="image-import-preview-table"></div>
+                <div class="modal-actions">
+                    <button class="btn btn-secondary" id="image-import-cancel-3-btn">Abbrechen</button>
+                    <button class="btn btn-primary" id="image-import-confirm-btn">Bestätigen und Importieren</button>
+                </div>
+            </div>
+
+            <!-- Stage 4: Done -->
+            <div class="modal-stage" data-stage="4" hidden>
+                <h2>Import abgeschlossen</h2>
+                <p id="image-import-done-summary"></p>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
