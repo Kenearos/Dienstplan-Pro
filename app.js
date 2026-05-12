@@ -371,68 +371,132 @@ class DienstplanApp {
     }
 
     /**
-     * Create a result card for an employee
+     * Create a result card for an employee (new variants shape).
      */
     createResultCard(employeeName, result) {
         const card = document.createElement('div');
         card.className = 'result-card';
 
-        let content = `<h3>${employeeName}</h3>`;
+        const ctx = this._currentCalcContext || {};
+        const yearMonth = ctx.yearMonth || '';
+        const vacChecked = result.isVacation ? 'checked' : '';
+        const safeName   = String(employeeName).replace(/"/g, '&quot;');
+        const safeYm     = String(yearMonth).replace(/"/g, '&quot;');
 
-        if (!result.thresholdReached) {
+        // Header + vacation toggle
+        let content = `
+            <div class="result-header">
+                <h3>${employeeName}</h3>
+                <label class="vacation-toggle">
+                    <input type="checkbox"
+                           data-vacation-employee="${safeName}"
+                           data-vacation-yearmonth="${safeYm}"
+                           ${vacChecked}>
+                    Urlaub gehabt (≥14 Tage frei)
+                </label>
+            </div>
+        `;
+
+        if (result.isVacation) {
+            content += `<div class="vacation-active-banner">Urlaubsmodus aktiv - Schwellen halbiert</div>`;
+        }
+
+        // Winner banner
+        if (!result.winner.eligible || result.totalBonus === 0) {
             content += `
                 <div class="threshold-warning">
-                    <h4>Schwellenwert nicht erreicht</h4>
-                    <p>Es wurden nur ${result.qualifyingDays.toFixed(1)} qualifizierende Tage gearbeitet.
-                    Mindestens ${this.calculator.MIN_QUALIFYING_DAYS} Tage erforderlich.</p>
+                    <h4>Keine Variante triggert</h4>
+                    <p>Mit den eingetragenen Diensten erreicht keine der drei Varianten einen positiven Bonus.</p>
                     <p><strong>Keine Bonuszahlung</strong></p>
                 </div>
             `;
         } else {
             content += `
-                <div class="result-summary">
-                    <div class="result-item">
-                        <div class="result-label">Normale Tage</div>
-                        <div class="result-value">${result.normalDays.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">WE/Feiertag Tage</div>
-                        <div class="result-value">${result.qualifyingDays.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">Abzug</div>
-                        <div class="result-value danger">-${result.qualifyingDaysDeducted.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">Normale Tage (bezahlt)</div>
-                        <div class="result-value success">${result.normalDaysPaid.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">WE/Feiertag (bezahlt)</div>
-                        <div class="result-value success">${result.qualifyingDaysPaid.toFixed(1)}</div>
-                    </div>
-                </div>
-
-                <div class="result-summary">
-                    <div class="result-item">
-                        <div class="result-label">Normale Tage (250€)</div>
-                        <div class="result-value">${this.calculator.formatCurrency(result.bonusNormalDays)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">WE/Feiertag (450€)</div>
-                        <div class="result-value">${this.calculator.formatCurrency(result.bonusQualifyingDays)}</div>
-                    </div>
-                </div>
-
                 <div class="bonus-total">
-                    <h4>Gesamtbonus</h4>
+                    <h4>Variante ${result.winner.variantId} <span class="variant-badge winner">★ Sieger</span></h4>
                     <div class="amount">${this.calculator.formatCurrency(result.totalBonus)}</div>
                 </div>
             `;
         }
 
+        // Classified summary line
+        const c = result.classified;
+        content += `
+            <div class="classified-summary">
+                <span>Fr: <strong>${c.fr.toFixed(1)}</strong></span>
+                <span>Sa: <strong>${c.sa.toFixed(1)}</strong></span>
+                <span>So: <strong>${c.so.toFixed(1)}</strong></span>
+                <span>Werktage: <strong>${c.weekday.toFixed(1)}</strong></span>
+            </div>
+        `;
+
+        // Collapsible variant breakdown
+        content += `<details class="variant-details"><summary>Alle Varianten anzeigen</summary>`;
+        for (const v of result.allResults) {
+            content += this.renderVariantBlock(v, result.winner.variantId);
+        }
+        content += `</details>`;
+
         card.innerHTML = content;
+
+        // Attach vacation-toggle handler
+        const cb = card.querySelector('input[data-vacation-employee]');
+        if (cb) {
+            cb.addEventListener('change', (e) => this.onVacationToggle(e));
+        }
         return card;
+    }
+
+    /**
+     * Render a single variant sub-panel.
+     */
+    renderVariantBlock(v, winnerId) {
+        const isWinner = v.variantId === winnerId;
+        const star = isWinner ? '<span class="variant-badge winner">★</span>' : '';
+        const labels = {
+            1: 'V1: 1 (Fr/So) + 3 Werktage',
+            2: 'V2: 1 Sa + 2 Werktage',
+            3: 'V3 (loose): 2 qualifizierende Tage (Pool Fr+Sa+So)'
+        };
+        let thresholdStr = '-';
+        if (v.threshold) {
+            if (v.variantId === 1) thresholdStr = `Fr+So ≥ ${v.threshold.frSo}, Werktage ≥ ${v.threshold.weekday}`;
+            if (v.variantId === 2) thresholdStr = `Sa ≥ ${v.threshold.sa}, Werktage ≥ ${v.threshold.weekday}`;
+            if (v.variantId === 3) thresholdStr = `Pool ≥ ${v.threshold.pool}`;
+        }
+        const elig = v.eligible ? '<span class="variant-eligible">erfüllt</span>'
+                                : '<span class="variant-not-eligible">nicht erfüllt</span>';
+        return `
+            <div class="variant-card${isWinner ? ' winner' : ''}">
+                <div class="variant-header">${star}<strong>${labels[v.variantId]}</strong></div>
+                <div class="variant-row"><span>Schwelle:</span><span>${thresholdStr}</span></div>
+                <div class="variant-row"><span>Eligibility:</span><span>${elig}</span></div>
+                <div class="variant-row"><span>Abzug:</span><span>
+                    Fr ${v.deduction.fr.toFixed(2)} - Sa ${v.deduction.sa.toFixed(2)} - So ${v.deduction.so.toFixed(2)} - WT ${v.deduction.weekday.toFixed(2)}
+                </span></div>
+                <div class="variant-row"><span>Bezahlt:</span><span>
+                    Fr ${v.paidShares.fr.toFixed(2)} - Sa ${v.paidShares.sa.toFixed(2)} - So ${v.paidShares.so.toFixed(2)} - WT ${v.paidShares.weekday.toFixed(2)}
+                </span></div>
+                <div class="variant-row variant-bonus"><span>Bonus:</span><span>${this.calculator.formatCurrency(v.bonus)}</span></div>
+            </div>
+        `;
+    }
+
+    /**
+     * Handle vacation checkbox toggle.
+     */
+    onVacationToggle(e) {
+        const cb = e.target;
+        const name = cb.getAttribute('data-vacation-employee');
+        const ym   = cb.getAttribute('data-vacation-yearmonth');
+        try {
+            this.storage.setVacationMode(name, ym, cb.checked);
+            // Re-run calc to reflect the new state
+            this.calculateBonuses();
+        } catch (err) {
+            this.showToast('Urlaubsmodus konnte nicht gespeichert werden', 'error');
+            cb.checked = !cb.checked; // revert visual state
+        }
     }
 
     // --- NEW: EMAIL REPORT GENERATOR ---
