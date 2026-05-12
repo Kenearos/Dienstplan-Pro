@@ -6,7 +6,7 @@
 
 **Primary Language**: German (UI, comments, and documentation)
 **Tech Stack**: Vanilla JavaScript, HTML5, CSS3, LocalStorage API
-**Deployment**: Docker container with Node.js `serve`, designed for Railway hosting
+**Deployment**: Docker container (Node.js `serve`) on self-hosted Hetzner server, fronted by Caddy reverse proxy with automatic Let's Encrypt TLS. Live at https://bonus.pixel-by-design.de
 
 ## Architecture
 
@@ -187,7 +187,12 @@ docker run -p 3000:3000 -e PORT=3000 dienstplan-pro
 3. Refresh browser to see changes
 4. Run test suite after changes
 
-### Deployment (Railway)
+### Deployment (Hetzner)
+
+**Live URL:** https://bonus.pixel-by-design.de
+**Server:** root@65.21.60.83 (Hetzner)
+**Container:** `dienstplan-pro` on the `matrix_default` Docker network so the
+`matrix-caddy-1` reverse proxy can resolve it by hostname.
 
 The Dockerfile uses `serve` from npm to serve static files:
 ```dockerfile
@@ -197,6 +202,26 @@ WORKDIR /app
 COPY . .
 CMD serve -s . -l tcp://0.0.0.0:${PORT:-3000}
 ```
+
+Caddy block in `/opt/matrix/Caddyfile`:
+```
+bonus.pixel-by-design.de {
+    reverse_proxy dienstplan-pro:3000
+}
+```
+
+**Update procedure** (when pushing new code):
+```bash
+ssh root@65.21.60.83
+cd /root/Dienstplan-Pro
+git pull
+docker build -t dienstplan-pro:latest .
+docker stop dienstplan-pro && docker rm dienstplan-pro
+docker run -d --name dienstplan-pro --network matrix_default \
+    --restart unless-stopped -e PORT=3000 dienstplan-pro:latest
+```
+
+Caddy reloads not needed unless the Caddyfile changes.
 
 ## Code Conventions
 
