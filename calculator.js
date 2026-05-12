@@ -67,11 +67,15 @@ class BonusCalculator {
         const v3 = variant3(classified, isVacation);
         const results = [v1, v2, v3];
 
-        // Pick winner: highest bonus, tie-breaker = lowest variantId (strict >)
+        // Pick winner: highest bonus; on tie prefer eligible over ineligible;
+        // further tie-break = lowest variantId (strict > preserves it).
         let winner = results[0];
         for (let i = 1; i < results.length; i++) {
-            if (results[i].bonus > winner.bonus) {
-                winner = results[i];
+            const r = results[i];
+            if (r.bonus > winner.bonus) {
+                winner = r;
+            } else if (r.bonus === winner.bonus && r.eligible && !winner.eligible) {
+                winner = r;
             }
         }
         winner.isWinner = true;
