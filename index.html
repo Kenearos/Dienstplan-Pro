@@ -201,6 +201,27 @@
                 </div>
 
                 <div class="settings-section">
+                    <h3>Bild-Import (KI)</h3>
+                    <p id="api-key-status" class="api-key-status-none">Kein Key hinterlegt</p>
+                    <button id="set-api-key-btn" class="btn btn-secondary">Key ändern</button>
+                    <button id="clear-api-key-btn" class="btn btn-danger">Key löschen</button>
+
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label for="api-model-select">Modell:</label>
+                        <select id="api-model-select">
+                            <option value="anthropic/claude-sonnet-4.6">Claude Sonnet 4.6</option>
+                            <option value="google/gemini-2.5-pro">Gemini 2.5 Pro</option>
+                            <option value="openai/gpt-4.1">GPT-4.1</option>
+                        </select>
+                    </div>
+
+                    <p class="text-muted" style="margin-top: 10px;">
+                        Hinweis: Der API-Key wird ausschließlich lokal in Ihrem Browser gespeichert
+                        und nur an OpenRouter (openrouter.ai) gesendet.
+                    </p>
+                </div>
+
+                <div class="settings-section">
                     <h3>Alle Daten löschen</h3>
                     <p class="text-warning">Achtung: Diese Aktion kann nicht rückgängig gemacht werden!</p>
                     <button id="clear-all-btn" class="btn btn-danger">Alle Daten löschen</button>
