@@ -407,6 +407,203 @@ class ImageImporter {
     }
 
     /**
+     * Render Stage 3 from this.session. Idempotent (clears and rebuilds DOM).
+     * Uses createElement + textContent only — never innerHTML with user data.
+     */
+    renderPreview() {
+        const monthNames = ['Januar', 'Februar', 'Maerz', 'April', 'Mai', 'Juni',
+                            'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
+        const weekdayFmt = new Intl.DateTimeFormat('de-DE', { weekday: 'long' });
+
+        // ---- Notes box ----
+        const notesBox = document.getElementById('image-import-notes-box');
+        if (notesBox) {
+            while (notesBox.firstChild) notesBox.removeChild(notesBox.firstChild);
+            const detected = (this.session.detectedMonth && this.session.detectedYear)
+                ? `${monthNames[this.session.detectedMonth - 1]} ${this.session.detectedYear}`
+                : null;
+            const target = `${monthNames[this.session.targetMonth - 1]} ${this.session.targetYear}`;
+            if (detected && (this.session.detectedMonth !== this.session.targetMonth
+                             || this.session.detectedYear !== this.session.targetYear)) {
+                const p = document.createElement('p');
+                p.className = 'text-warning';
+                p.textContent = `Erkannter Monat: ${detected}, aktuell ausgewaehlt: ${target}. Import laeuft auf den ausgewaehlten Monat.`;
+                notesBox.appendChild(p);
+            }
+            for (const note of this.session.notes) {
+                const p = document.createElement('p');
+                p.className = 'text-muted';
+                p.textContent = note;
+                notesBox.appendChild(p);
+            }
+        }
+
+        // ---- Unknown names box ----
+        const unknownsBox = document.getElementById('image-import-unknowns-box');
+        const unknownsList = document.getElementById('image-import-unknowns-list');
+        if (unknownsBox && unknownsList) {
+            while (unknownsList.firstChild) unknownsList.removeChild(unknownsList.firstChild);
+            if (this.session.unknowns.length === 0) {
+                unknownsBox.hidden = true;
+            } else {
+                unknownsBox.hidden = false;
+                const employees = [...this.storage.getEmployees()].sort();
+                for (const unk of this.session.unknowns) {
+                    const row = document.createElement('div');
+                    row.className = 'unknown-name-row';
+
+                    const nameSpan = document.createElement('span');
+                    nameSpan.className = 'unknown-candidate';
+                    nameSpan.textContent = unk.candidate;
+                    row.appendChild(nameSpan);
+
+                    const select = document.createElement('select');
+                    const optNew = document.createElement('option');
+                    optNew.value = 'new';
+                    optNew.textContent = 'Neuer Mitarbeiter anlegen';
+                    select.appendChild(optNew);
+                    for (const emp of employees) {
+                        const o = document.createElement('option');
+                        o.value = `assign:${emp}`;
+                        o.textContent = `Zuordnen zu ${emp}`;
+                        select.appendChild(o);
+                    }
+                    const optIgnore = document.createElement('option');
+                    optIgnore.value = 'ignore';
+                    optIgnore.textContent = 'Ignorieren';
+                    select.appendChild(optIgnore);
+
+                    select.value = unk.choice;
+                    select.addEventListener('change', (e) => {
+                        this.onUnknownChoiceChange(unk.candidate, e.target.value);
+                    });
+                    row.appendChild(select);
+
+                    if (unk.suggested) {
+                        const hint = document.createElement('div');
+                        hint.className = 'fuzzy-hint';
+                        hint.textContent = `moeglicher Match: ${unk.suggested}`;
+                        row.appendChild(hint);
+                    }
+                    unknownsList.appendChild(row);
+                }
+            }
+        }
+
+        // ---- Preview table grouped by resolved employee ----
+        const tableHost = document.getElementById('image-import-preview-table');
+        if (tableHost) {
+            while (tableHost.firstChild) tableHost.removeChild(tableHost.firstChild);
+            const grouped = this.groupEntriesByResolvedEmployee();
+
+            for (const [employeeName, rows] of grouped.entries()) {
+                if (employeeName === null) continue;
+                const group = document.createElement('div');
+                group.className = 'preview-employee-group';
+                const h3 = document.createElement('h3');
+                h3.textContent = employeeName;
+                group.appendChild(h3);
+
+                const table = document.createElement('table');
+                table.className = 'preview-table';
+                const thead = document.createElement('thead');
+                const headRow = document.createElement('tr');
+                for (const headText of ['Datum', 'Wochentag', 'Slot', 'Anteil', 'Aktion']) {
+                    const th = document.createElement('th');
+                    th.textContent = headText;
+                    headRow.appendChild(th);
+                }
+                thead.appendChild(headRow);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                for (const r of rows) {
+                    const tr = document.createElement('tr');
+                    tr.className = 'preview-row';
+                    const m = r.entry.date.getMonth() + 1;
+                    const y = r.entry.date.getFullYear();
+                    const outside = (m !== this.session.targetMonth || y !== this.session.targetYear);
+                    if (outside) tr.classList.add('outside-month');
+
+                    const tdDate = document.createElement('td');
+                    tdDate.textContent = r.entry.dateStr + (outside ? ' (ausserhalb Monat)' : '');
+                    tr.appendChild(tdDate);
+
+                    const tdWeekday = document.createElement('td');
+                    tdWeekday.textContent = weekdayFmt.format(r.entry.date);
+                    tr.appendChild(tdWeekday);
+
+                    const tdSlot = document.createElement('td');
+                    const slot = this.classify(r.entry.date);
+                    const slotBadge = document.createElement('span');
+                    slotBadge.className = `slot-badge slot-${slot}`;
+                    slotBadge.textContent = slot;
+                    tdSlot.appendChild(slotBadge);
+                    tr.appendChild(tdSlot);
+
+                    const tdShare = document.createElement('td');
+                    tdShare.textContent = r.entry.share.toFixed(1);
+                    tr.appendChild(tdShare);
+
+                    const tdAction = document.createElement('td');
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'row-remove-btn';
+                    removeBtn.title = 'Entfernen';
+                    removeBtn.textContent = 'Entfernen';
+                    removeBtn.addEventListener('click', () => this.onRemoveEntry(r.index));
+                    tdAction.appendChild(removeBtn);
+                    tr.appendChild(tdAction);
+
+                    tbody.appendChild(tr);
+                }
+                table.appendChild(tbody);
+                group.appendChild(table);
+                tableHost.appendChild(group);
+            }
+        }
+    }
+
+    /**
+     * Build Map<resolvedEmployeeName|null, [{ entry, index }]> based on session.entries
+     * and unknowns choices.
+     */
+    groupEntriesByResolvedEmployee() {
+        const choiceByCandidate = new Map();
+        for (const u of this.session.unknowns) {
+            choiceByCandidate.set(u.candidate, u.choice);
+        }
+
+        const grouped = new Map();
+        for (let i = 0; i < this.session.entries.length; i++) {
+            const e = this.session.entries[i];
+            let resolved;
+            if (this.session.resolvedNames.has(e.name)) {
+                resolved = this.session.resolvedNames.get(e.name);
+            } else {
+                const choice = choiceByCandidate.get(e.name) || 'new';
+                if (choice === 'ignore') resolved = null;
+                else if (choice === 'new') resolved = e.name;
+                else if (choice.startsWith('assign:')) resolved = choice.slice('assign:'.length);
+                else resolved = e.name;
+            }
+            if (!grouped.has(resolved)) grouped.set(resolved, []);
+            grouped.get(resolved).push({ entry: e, index: i });
+        }
+        return grouped;
+    }
+
+    onUnknownChoiceChange(candidate, choice) {
+        const unk = this.session.unknowns.find(u => u.candidate === candidate);
+        if (unk) unk.choice = choice;
+        this.renderPreview();
+    }
+
+    onRemoveEntry(index) {
+        this.session.entries.splice(index, 1);
+        this.renderPreview();
+    }
+
+    /**
      * Stage 1 to Stage 2 to (Stage 3 | back-to-1 on error).
      * Compress, call API, parse, dedupe, match names, then showStage(3).
      */
