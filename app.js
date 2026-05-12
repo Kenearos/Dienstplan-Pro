@@ -43,8 +43,13 @@ class DienstplanApp {
         // Duty management
         document.getElementById('add-duty-btn').addEventListener('click', () => this.addDuty());
         document.getElementById('employee-select-duty').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
-        document.getElementById('month-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
-        document.getElementById('year-select').addEventListener('change', () => this.loadDutiesForSelectedEmployee());
+
+        // Date stepper buttons (Feature C)
+        document.getElementById('duty-date-prev').addEventListener('click', () => this.stepDutyDate(-1));
+        document.getElementById('duty-date-next').addEventListener('click', () => this.stepDutyDate(+1));
+        document.getElementById('duty-date').addEventListener('change', () => this.updateDateStepperState());
+        document.getElementById('month-select').addEventListener('change', () => this.onDutyMonthChange());
+        document.getElementById('year-select').addEventListener('change', () => this.onDutyMonthChange());
 
         // Bild-Import (Feature A)
         const imageImportBtn = document.getElementById('open-image-import-btn');
@@ -131,6 +136,8 @@ class DienstplanApp {
         // Set date input to today
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('duty-date').value = today;
+
+        this.updateDateStepperState();
     }
 
     /**
@@ -295,6 +302,86 @@ class DienstplanApp {
     }
 
     /**
+     * Step the duty-date input by +/-1 day, clamped to the currently selected month.
+     */
+    stepDutyDate(delta) {
+        const dateInput = document.getElementById('duty-date');
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect  = document.getElementById('year-select');
+        const month = parseInt(monthSelect.value);
+        const year  = parseInt(yearSelect.value);
+        const lastDay = new Date(year, month, 0).getDate();
+
+        if (!dateInput.value) {
+            // Initialize to 1st of the selected month
+            dateInput.value = `${year}-${String(month).padStart(2, '0')}-01`;
+            this.updateDateStepperState();
+            return;
+        }
+        const cur = new Date(dateInput.value + 'T12:00:00');
+        // If outside selected month, snap to 1st
+        const inMonth = (cur.getFullYear() === year) && ((cur.getMonth() + 1) === month);
+        if (!inMonth) {
+            dateInput.value = `${year}-${String(month).padStart(2, '0')}-01`;
+            this.updateDateStepperState();
+            return;
+        }
+        const curDay = cur.getDate();
+        const newDay = curDay + delta;
+        if (newDay < 1 || newDay > lastDay) return; // clamp
+        const newDate = new Date(year, month - 1, newDay, 12, 0, 0);
+        const yyyy = newDate.getFullYear();
+        const mm   = String(newDate.getMonth() + 1).padStart(2, '0');
+        const dd   = String(newDate.getDate()).padStart(2, '0');
+        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        this.updateDateStepperState();
+    }
+
+    /**
+     * Update the disabled state of the stepper buttons based on current date / month.
+     */
+    updateDateStepperState() {
+        const dateInput = document.getElementById('duty-date');
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect  = document.getElementById('year-select');
+        const prevBtn = document.getElementById('duty-date-prev');
+        const nextBtn = document.getElementById('duty-date-next');
+        if (!dateInput || !prevBtn || !nextBtn) return;
+
+        const month = parseInt(monthSelect.value);
+        const year  = parseInt(yearSelect.value);
+        const lastDay = new Date(year, month, 0).getDate();
+
+        if (!dateInput.value) {
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+            return;
+        }
+        const cur = new Date(dateInput.value + 'T12:00:00');
+        const inSelectedMonth = (cur.getFullYear() === year) && ((cur.getMonth() + 1) === month);
+        if (!inSelectedMonth) {
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+            return;
+        }
+        prevBtn.disabled = cur.getDate() <= 1;
+        nextBtn.disabled = cur.getDate() >= lastDay;
+    }
+
+    /**
+     * Handle month/year change in the duty tab: set date to 1st of new month, refresh list, refresh stepper.
+     */
+    onDutyMonthChange() {
+        const monthSelect = document.getElementById('month-select');
+        const yearSelect  = document.getElementById('year-select');
+        const month = parseInt(monthSelect.value);
+        const year  = parseInt(yearSelect.value);
+        document.getElementById('duty-date').value = `${year}-${String(month).padStart(2, '0')}-01`;
+        this.updateDateStepperState();
+        this.loadDutiesForSelectedEmployee();
+    }
+
+    /**
      * Load duties for the selected employee and month
      */
     loadDutiesForSelectedEmployee() {
@@ -364,9 +451,17 @@ class DienstplanApp {
 
         const month = parseInt(monthSelect.value);
         const year = parseInt(yearSelect.value);
+        const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
 
         const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
-        const results = this.calculator.calculateAllEmployees(employeeDuties);
+
+        // Build vacation map for this month: { name: boolean }
+        const vacationMap = {};
+        Object.keys(employeeDuties).forEach(name => {
+            vacationMap[name] = this.storage.getVacationMode(name, yearMonth);
+        });
+
+        const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
         const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
                           'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
@@ -379,6 +474,9 @@ class DienstplanApp {
             return;
         }
 
+        // Stash current calc context for vacation-toggle handler
+        this._currentCalcContext = { year, month, yearMonth };
+
         employees.forEach(employeeName => {
             const result = results[employeeName];
             const resultCard = this.createResultCard(employeeName, result);
@@ -389,68 +487,132 @@ class DienstplanApp {
     }
 
     /**
-     * Create a result card for an employee
+     * Create a result card for an employee (new variants shape).
      */
     createResultCard(employeeName, result) {
         const card = document.createElement('div');
         card.className = 'result-card';
 
-        let content = `<h3>${employeeName}</h3>`;
+        const ctx = this._currentCalcContext || {};
+        const yearMonth = ctx.yearMonth || '';
+        const vacChecked = result.isVacation ? 'checked' : '';
+        const safeName   = String(employeeName).replace(/"/g, '&quot;');
+        const safeYm     = String(yearMonth).replace(/"/g, '&quot;');
 
-        if (!result.thresholdReached) {
+        // Header + vacation toggle
+        let content = `
+            <div class="result-header">
+                <h3>${employeeName}</h3>
+                <label class="vacation-toggle">
+                    <input type="checkbox"
+                           data-vacation-employee="${safeName}"
+                           data-vacation-yearmonth="${safeYm}"
+                           ${vacChecked}>
+                    Urlaub gehabt (≥14 Tage frei)
+                </label>
+            </div>
+        `;
+
+        if (result.isVacation) {
+            content += `<div class="vacation-active-banner">Urlaubsmodus aktiv - Schwellen halbiert</div>`;
+        }
+
+        // Winner banner
+        if (!result.winner.eligible || result.totalBonus === 0) {
             content += `
                 <div class="threshold-warning">
-                    <h4>Schwellenwert nicht erreicht</h4>
-                    <p>Es wurden nur ${result.qualifyingDays.toFixed(1)} qualifizierende Tage gearbeitet.
-                    Mindestens ${this.calculator.MIN_QUALIFYING_DAYS} Tage erforderlich.</p>
+                    <h4>Keine Variante triggert</h4>
+                    <p>Mit den eingetragenen Diensten erreicht keine der drei Varianten einen positiven Bonus.</p>
                     <p><strong>Keine Bonuszahlung</strong></p>
                 </div>
             `;
         } else {
             content += `
-                <div class="result-summary">
-                    <div class="result-item">
-                        <div class="result-label">Normale Tage</div>
-                        <div class="result-value">${result.normalDays.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">WE/Feiertag Tage</div>
-                        <div class="result-value">${result.qualifyingDays.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">Abzug</div>
-                        <div class="result-value danger">-${result.qualifyingDaysDeducted.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">Normale Tage (bezahlt)</div>
-                        <div class="result-value success">${result.normalDaysPaid.toFixed(1)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">WE/Feiertag (bezahlt)</div>
-                        <div class="result-value success">${result.qualifyingDaysPaid.toFixed(1)}</div>
-                    </div>
-                </div>
-
-                <div class="result-summary">
-                    <div class="result-item">
-                        <div class="result-label">Normale Tage (250€)</div>
-                        <div class="result-value">${this.calculator.formatCurrency(result.bonusNormalDays)}</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="result-label">WE/Feiertag (450€)</div>
-                        <div class="result-value">${this.calculator.formatCurrency(result.bonusQualifyingDays)}</div>
-                    </div>
-                </div>
-
                 <div class="bonus-total">
-                    <h4>Gesamtbonus</h4>
+                    <h4>Variante ${result.winner.variantId} <span class="variant-badge winner">★ Sieger</span></h4>
                     <div class="amount">${this.calculator.formatCurrency(result.totalBonus)}</div>
                 </div>
             `;
         }
 
+        // Classified summary line
+        const c = result.classified;
+        content += `
+            <div class="classified-summary">
+                <span>Fr: <strong>${c.fr.toFixed(1)}</strong></span>
+                <span>Sa: <strong>${c.sa.toFixed(1)}</strong></span>
+                <span>So: <strong>${c.so.toFixed(1)}</strong></span>
+                <span>Werktage: <strong>${c.weekday.toFixed(1)}</strong></span>
+            </div>
+        `;
+
+        // Collapsible variant breakdown
+        content += `<details class="variant-details"><summary>Alle Varianten anzeigen</summary>`;
+        for (const v of result.allResults) {
+            content += this.renderVariantBlock(v, result.winner.variantId);
+        }
+        content += `</details>`;
+
         card.innerHTML = content;
+
+        // Attach vacation-toggle handler
+        const cb = card.querySelector('input[data-vacation-employee]');
+        if (cb) {
+            cb.addEventListener('change', (e) => this.onVacationToggle(e));
+        }
         return card;
+    }
+
+    /**
+     * Render a single variant sub-panel.
+     */
+    renderVariantBlock(v, winnerId) {
+        const isWinner = v.variantId === winnerId;
+        const star = isWinner ? '<span class="variant-badge winner">★</span>' : '';
+        const labels = {
+            1: 'V1: 1 (Fr/So) + 3 Werktage',
+            2: 'V2: 1 Sa + 2 Werktage',
+            3: 'V3 (loose): 2 qualifizierende Tage (Pool Fr+Sa+So)'
+        };
+        let thresholdStr = '-';
+        if (v.threshold) {
+            if (v.variantId === 1) thresholdStr = `Fr+So ≥ ${v.threshold.frSo}, Werktage ≥ ${v.threshold.weekday}`;
+            if (v.variantId === 2) thresholdStr = `Sa ≥ ${v.threshold.sa}, Werktage ≥ ${v.threshold.weekday}`;
+            if (v.variantId === 3) thresholdStr = `Pool ≥ ${v.threshold.pool}`;
+        }
+        const elig = v.eligible ? '<span class="variant-eligible">erfüllt</span>'
+                                : '<span class="variant-not-eligible">nicht erfüllt</span>';
+        return `
+            <div class="variant-card${isWinner ? ' winner' : ''}">
+                <div class="variant-header">${star}<strong>${labels[v.variantId]}</strong></div>
+                <div class="variant-row"><span>Schwelle:</span><span>${thresholdStr}</span></div>
+                <div class="variant-row"><span>Eligibility:</span><span>${elig}</span></div>
+                <div class="variant-row"><span>Abzug:</span><span>
+                    Fr ${v.deduction.fr.toFixed(2)} - Sa ${v.deduction.sa.toFixed(2)} - So ${v.deduction.so.toFixed(2)} - WT ${v.deduction.weekday.toFixed(2)}
+                </span></div>
+                <div class="variant-row"><span>Bezahlt:</span><span>
+                    Fr ${v.paidShares.fr.toFixed(2)} - Sa ${v.paidShares.sa.toFixed(2)} - So ${v.paidShares.so.toFixed(2)} - WT ${v.paidShares.weekday.toFixed(2)}
+                </span></div>
+                <div class="variant-row variant-bonus"><span>Bonus:</span><span>${this.calculator.formatCurrency(v.bonus)}</span></div>
+            </div>
+        `;
+    }
+
+    /**
+     * Handle vacation checkbox toggle.
+     */
+    onVacationToggle(e) {
+        const cb = e.target;
+        const name = cb.getAttribute('data-vacation-employee');
+        const ym   = cb.getAttribute('data-vacation-yearmonth');
+        try {
+            this.storage.setVacationMode(name, ym, cb.checked);
+            // Re-run calc to reflect the new state
+            this.calculateBonuses();
+        } catch (err) {
+            this.showToast('Urlaubsmodus konnte nicht gespeichert werden', 'error');
+            cb.checked = !cb.checked; // revert visual state
+        }
     }
 
     // --- NEW: EMAIL REPORT GENERATOR ---
@@ -462,8 +624,13 @@ class DienstplanApp {
         const year = parseInt(yearSelect.value);
 
         const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
-        const results = this.calculator.calculateAllEmployees(employeeDuties);
-        
+        const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+        const vacationMap = {};
+        Object.keys(employeeDuties).forEach(n => {
+            vacationMap[n] = this.storage.getVacationMode(n, yearMonth);
+        });
+        const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
+
         const monthName = this.getMonthName(month);
 
         let reportHtml = `<h3>Dienstplan Abrechnung ${monthName} ${year}</h3>`;
@@ -484,25 +651,26 @@ class DienstplanApp {
         if (results && Object.keys(results).length > 0) {
             Object.keys(results).forEach(name => {
                 const res = results[name];
-                const totalWe = res.qualifyingDays || 0;
-                const deducted = res.qualifyingDaysDeducted || 0;
-                const threshold = res.thresholdReached;
-                
-                let statusText = "";
-                let rowStyle = "";
-                let blockText = "";
+                const w   = res.winner;
+                const c   = res.classified;
+                const totalWe = c.fr + c.sa + c.so;
+                const deducted = w.deduction.fr + w.deduction.sa + w.deduction.so;
+                const triggered = w.eligible && res.totalBonus > 0;
 
-                if (threshold) {
-                    statusText = "Variante 3 (Bonus)";
-                    rowStyle = "";
-                    blockText = `Herr/Frau ${name} erreicht ${this.formatNumber(totalWe)} Wochenenddienste, es werden ihm/ihr ${this.formatNumber(deducted)} Wochenenddienste nicht angerechnet und somit erreicht er/sie Variante 3.`;
-                } else if (totalWe > 0) {
-                    statusText = "Bonus nicht erreicht";
-                    rowStyle = "background-color: #fff0f0;";
-                    blockText = `Mitarbeiter ${name} erreicht das Bonussystem nicht (${this.formatNumber(totalWe)} WE-Dienste < 2.0).`;
+                let statusText = '';
+                let rowStyle   = '';
+                let blockText  = '';
+
+                if (triggered) {
+                    statusText = `Variante ${w.variantId} (${this.calculator.formatCurrency(res.totalBonus)})${res.isVacation ? ' - Urlaub' : ''}`;
+                    blockText = `Herr/Frau ${name} erreicht ${this.formatNumber(totalWe)} qualifizierende Dienste (Fr/Sa/So), ${this.formatNumber(deducted)} davon werden abgezogen - Bonus nach Variante ${w.variantId}: ${this.calculator.formatCurrency(res.totalBonus)}${res.isVacation ? ' (Urlaubsmodus aktiv)' : ''}.`;
+                } else if (totalWe > 0 || c.weekday > 0) {
+                    statusText = 'Bonus nicht erreicht';
+                    rowStyle = 'background-color: #fff0f0;';
+                    blockText = `Mitarbeiter ${name} erreicht in keiner der drei Varianten die Schwelle (Fr ${c.fr.toFixed(1)}, Sa ${c.sa.toFixed(1)}, So ${c.so.toFixed(1)}, Werktage ${c.weekday.toFixed(1)})${res.isVacation ? ' - Urlaubsmodus aktiv' : ''}.`;
                 } else {
-                    statusText = "-";
-                    rowStyle = "color: #999;";
+                    statusText = '-';
+                    rowStyle = 'color: #999;';
                 }
 
                 reportHtml += `<tr style="${rowStyle}">
@@ -646,39 +814,47 @@ class DienstplanApp {
         
         // === Sheet 2: Monatliche Auswertung ===
         csv += `AUSWERTUNG ${monthNames[month - 1]} ${year}\n`;
-        csv += 'Mitarbeiter;Normale Tage;WE/Feiertag Tage;Abzug;Normale Tage (bezahlt);WE/Feiertag (bezahlt);Schwelle erreicht;Bonus Normal;Bonus WE;Gesamtbonus (EUR)\n';
-        
+        csv += 'Mitarbeiter;Urlaub;Sieger-Variante;Fr;Sa;So;Werktage;Eligible;Abzug Fr;Abzug Sa;Abzug So;Abzug WT;Bonus (EUR)\n';
+
+        const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
         const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
-        const results = this.calculator.calculateAllEmployees(employeeDuties);
-        
+        const vacationMap = {};
+        Object.keys(employeeDuties).forEach(name => {
+            vacationMap[name] = this.storage.getVacationMode(name, yearMonth);
+        });
+        const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
+
         let totalBonus = 0;
-        
         for (const [employeeName, result] of Object.entries(results)) {
-            const threshold = result.thresholdReached ? 'JA' : 'NEIN';
-            
+            const w = result.winner;
+            const c = result.classified;
             totalBonus += result.totalBonus;
-            
             csv += `${escapeCSV(employeeName)};`;
-            csv += `${result.normalDays.toFixed(1).replace('.', ',')};`;
-            csv += `${result.qualifyingDays.toFixed(1).replace('.', ',')};`;
-            csv += `${result.qualifyingDaysDeducted.toFixed(1).replace('.', ',')};`;
-            csv += `${result.normalDaysPaid.toFixed(1).replace('.', ',')};`;
-            csv += `${result.qualifyingDaysPaid.toFixed(1).replace('.', ',')};`;
-            csv += `${threshold};`;
-            csv += `${result.bonusNormalDays.toFixed(2).replace('.', ',')};`;
-            csv += `${result.bonusQualifyingDays.toFixed(2).replace('.', ',')};`;
+            csv += `${result.isVacation ? 'JA' : 'NEIN'};`;
+            csv += `V${w.variantId};`;
+            csv += `${c.fr.toFixed(1).replace('.', ',')};`;
+            csv += `${c.sa.toFixed(1).replace('.', ',')};`;
+            csv += `${c.so.toFixed(1).replace('.', ',')};`;
+            csv += `${c.weekday.toFixed(1).replace('.', ',')};`;
+            csv += `${w.eligible ? 'JA' : 'NEIN'};`;
+            csv += `${w.deduction.fr.toFixed(2).replace('.', ',')};`;
+            csv += `${w.deduction.sa.toFixed(2).replace('.', ',')};`;
+            csv += `${w.deduction.so.toFixed(2).replace('.', ',')};`;
+            csv += `${w.deduction.weekday.toFixed(2).replace('.', ',')};`;
             csv += `${result.totalBonus.toFixed(2).replace('.', ',')}\n`;
         }
-        
-        csv += `\nGESAMT;;;;;;;;;${totalBonus.toFixed(2).replace('.', ',')}\n`;
-        
+
+        csv += `\nGESAMT;;;;;;;;;;;;${totalBonus.toFixed(2).replace('.', ',')}\n`;
+
         csv += '\n\n';
         csv += 'LEGENDE\n';
-        csv += 'Normale Tage;Montag-Donnerstag ohne Feiertag/Vortag\n';
-        csv += 'WE/Feiertag Tage;"Freitag, Samstag, Sonntag, Feiertag oder Tag vor Feiertag"\n';
-        csv += 'Schwelle;"Mindestens 2,0 WE-Einheiten für Bonuszahlung erforderlich"\n';
-        csv += 'Sätze;"Normale Tage = 250 EUR/Einheit, WE/Feiertag = 450 EUR/Einheit"\n';
-        csv += 'Abzug;"Bei Erreichen der Schwelle werden 2,0 WE-Einheiten abgezogen"\n';
+        csv += 'Fr/Sa/So/Werktage;Klassifizierte Shares pro Slot (Halbdienste 0,5)\n';
+        csv += 'Sieger-Variante;V1, V2 oder V3 - automatisch die Variante mit dem höchsten Bonus\n';
+        csv += 'V1;"fr+so >= 1 UND weekday >= 3 (Halbiert bei Urlaub: 0,5 / 1,5)"\n';
+        csv += 'V2;"sa >= 1 UND weekday >= 2 (Halbiert bei Urlaub: 0,5 / 1)"\n';
+        csv += 'V3 (loose);"fr+sa+so >= 2 - wie bisher (Halbiert bei Urlaub: 1)"\n';
+        csv += 'Urlaub;"Wenn JA: Schwellen und Abzüge halbiert"\n';
+        csv += 'Sätze;"Werktag = 250 EUR/Einheit, Fr/Sa/So/Feiertag = 450 EUR/Einheit"\n';
         
         // Download CSV file
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -730,30 +906,18 @@ class DienstplanApp {
         for (const [name, duties] of Object.entries(employeeDuties)) {
             employeeData[name] = {
                 duties: duties,
-                byWeekday: { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] },
-                wt: 0,
-                we_fr: 0,
-                we_other: 0
+                byWeekday: { 0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }
             };
-            
+
             duties.forEach(duty => {
                 const dayOfWeek = duty.date.getDay();
                 const isQualifying = this.calculator.isQualifyingDay(duty.date);
-                const isFriday = dayOfWeek === 5;
-                
+
                 employeeData[name].byWeekday[dayOfWeek].push({
                     ...duty,
                     isQual: isQualifying,
                     dayType: this.calculator.getDayTypeLabel(duty.date)
                 });
-                
-                if (!isQualifying) {
-                    employeeData[name].wt += duty.share;
-                } else if (isFriday) {
-                    employeeData[name].we_fr += duty.share;
-                } else {
-                    employeeData[name].we_other += duty.share;
-                }
             });
         }
         
@@ -888,54 +1052,37 @@ class DienstplanApp {
         
         let totalBonus = 0;
         const employeeNotes = [];
-        
+
+        // Compute via BonusCalculator (uses winning variant)
+        const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+        const vacationMap = {};
+        Object.keys(employeeDuties).forEach(n => {
+            vacationMap[n] = this.storage.getVacationMode(n, yearMonth);
+        });
+        const calcResults = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
+
         for (const [name, data] of Object.entries(employeeData)) {
-            const we_total = data.we_fr + data.we_other;
-            const thresholdReached = we_total >= this.calculator.MIN_QUALIFYING_DAYS - 0.0001;
-            
-            let bonus = 0;
-            
-            if (thresholdReached) {
-                const wt_pay = data.wt * this.calculator.RATE_NORMAL;
-                let deduct = this.calculator.DEDUCTION_AMOUNT;
-                let deduct_fr = Math.min(deduct, data.we_fr);
-                let deduct_other = Math.max(0, deduct - deduct_fr);
-                const paid_fr = Math.max(0, data.we_fr - deduct_fr);
-                const paid_other = Math.max(0, data.we_other - deduct_other);
-                const we_pay = (paid_fr + paid_other) * this.calculator.RATE_WEEKEND;
-                bonus = wt_pay + we_pay;
-            }
-            
+            const calcRes = calcResults[name] || this.calculator.getEmptyResult();
+            const bonus = calcRes.totalBonus;
+            const w     = calcRes.winner;
+
             totalBonus += bonus;
-            
-            // Generate note - cleaner, more professional format
+
             const safeName = escapeHtml(name);
             let note = '';
-            
-            if (!thresholdReached) {
-                note = `<b>${safeName}</b> erreicht die Mindestschwelle nicht (${we_total.toFixed(1)} von ${this.calculator.MIN_QUALIFYING_DAYS.toFixed(1)} WE-Einheiten) und erhält daher keine Bonuszahlung.`;
+            if (bonus === 0 || !w.eligible) {
+                note = `<b>${safeName}</b> erreicht in keiner der drei Varianten einen positiven Bonus${calcRes.isVacation ? ' (Urlaubsmodus aktiv)' : ''} und erhält daher keine Bonuszahlung.`;
             } else {
-                const paid_we = we_total - this.calculator.DEDUCTION_AMOUNT;
-                let breakdown = [];
-                if (data.wt > 0) breakdown.push(`${data.wt.toFixed(1)} WT-Einheiten à ${this.calculator.RATE_NORMAL} €`);
-                if (paid_we > 0) breakdown.push(`${paid_we.toFixed(1)} WE-Einheiten à ${this.calculator.RATE_WEEKEND} €`);
-                
-                note = `<b>${safeName}</b> erhält eine Bonuszahlung von <span style="color: #28a745; font-weight: bold;">${this.calculator.formatCurrency(bonus)}</span>`;
-                if (breakdown.length > 0) {
-                    note += ` (${breakdown.join(' + ')})`;
-                }
-                note += '.';
+                const c = calcRes.classified;
+                note = `<b>${safeName}</b> erhält eine Bonuszahlung von <span style="color: #28a745; font-weight: bold;">${this.calculator.formatCurrency(bonus)}</span> nach Variante ${w.variantId}${calcRes.isVacation ? ' (Urlaubsmodus aktiv)' : ''}. Klassifiziert: Fr ${c.fr.toFixed(1)} / Sa ${c.sa.toFixed(1)} / So ${c.so.toFixed(1)} / Werktage ${c.weekday.toFixed(1)}.`;
             }
             employeeNotes.push(note);
-            
+
             // Build table row
             html += `
         <tr>
             <td class="employee-name">${safeName}</td>`;
-            
-            // Days: Mo(1), Di(2), Mi(3), Do(4), Fr(5), Sa(6), So(0)
             const dayOrder = [1, 2, 3, 4, 5, 6, 0];
-            
             for (const dayIdx of dayOrder) {
                 const dayDuties = data.byWeekday[dayIdx];
                 if (dayDuties.length === 0) {
@@ -944,16 +1091,12 @@ class DienstplanApp {
                     let cellContent = '';
                     dayDuties.forEach(duty => {
                         const shareStr = duty.share === 0.5 ? '½' : '';
-                        // Determine tag style
-                        let tag = duty.isQual ? 'we-tag' : 'wt-tag';
-                        
-                        // Build cell content
+                        const tag = duty.isQual ? 'we-tag' : 'wt-tag';
                         cellContent += `<span class="${tag}">${shareStr}X</span><br>`;
                     });
                     html += `<td class="duty-cell">${cellContent}</td>`;
                 }
             }
-            
             html += `
             <td class="${bonus > 0 ? 'bonus-amount' : 'no-bonus'}">${bonus > 0 ? this.calculator.formatCurrency(bonus) : '-'}</td>
         </tr>`;
@@ -976,22 +1119,20 @@ class DienstplanApp {
         
         html += `
 <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd;">
-    <p><strong>Berechnungsregeln (Variante 2 - Streng):</strong></p>
+    <p><strong>Berechnungsregeln (NRW Psychiatrie 2011):</strong></p>
     <ul>
-        <li><strong>WE-Tage:</strong> Freitag, Samstag, Sonntag, Feiertage und Tage vor Feiertagen</li>
-        <li><strong>Schwelle:</strong> Mindestens 2,0 WE-Einheiten für Bonuszahlung erforderlich</li>
-        <li><strong>Vergütung bei Erreichen der Schwelle:</strong>
-            <ul>
-                <li>Werktage (WT): 250 € pro Einheit</li>
-                <li>WE-Tage: 450 € pro Einheit (abzüglich 2,0 Einheiten Abzug, Freitag zuerst)</li>
-            </ul>
-        </li>
-        <li><strong>Unter Schwelle:</strong> Keine Bonuszahlung (weder WT noch WE)</li>
+        <li><strong>Slots:</strong> Jeder Dienst wird in fr / sa / so / werktag klassifiziert. Tag vor Mo-Do-Feiertag = fr. Mo-Do-Feiertag = so. Sandwich-Tag (Feiertag + Tag-vor) = sa.</li>
+        <li><strong>V1:</strong> fr+so ≥ 1 UND werktag ≥ 3 → Abzug 1 (Fr-Prio) + 3 werktag.</li>
+        <li><strong>V2:</strong> sa ≥ 1 UND werktag ≥ 2 → Abzug 1 sa + 2 werktag.</li>
+        <li><strong>V3 (loose):</strong> fr+sa+so ≥ 2 → Abzug 2 aus Pool (Prio fr → so → sa).</li>
+        <li><strong>Auto-Select:</strong> Die Variante mit dem höchsten Bonus gewinnt; bei Gleichstand gewinnt die niedrigste Variantennummer.</li>
+        <li><strong>Urlaubsmodus (≥14 Tage frei):</strong> Halbiert alle Schwellen UND Abzüge.</li>
+        <li><strong>Sätze:</strong> Werktag = 250 EUR, Fr/Sa/So/Feiertag = 450 EUR.</li>
     </ul>
 </div>
 
 <p style="margin-top: 30px; color: #666; font-size: 0.9em;">
-    Erstellt am: ${new Date().toLocaleDateString('de-DE')} | Dienstplan NRW (Variante 2 - Streng)
+    Erstellt am: ${new Date().toLocaleDateString('de-DE')} | Dienstplan-Pro - NRW Psychiatrie 2011
 </p>
 
 </body>
