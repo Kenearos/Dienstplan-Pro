@@ -1,0 +1,47 @@
+# .gitignore — rendered by adopt-standard.sh (verbatim; no placeholders).
+# Secret-safe defaults consistent with the standards repo's own root .gitignore.
+
+# ─────────────────────────────────────────────────────────────
+# Secrets — NEVER commit decrypted material or raw keys.
+# Only *.enc.* / *.sops.* (encrypted) and *.example files belong in git.
+# ─────────────────────────────────────────────────────────────
+*.dec
+*.decrypted
+*.plain.yaml
+*.plain.json
+*.plaintext
+age.key
+*.agekey
+*.age.key
+keys.txt
+id_rsa
+id_ed25519
+*.pem
+*.key
+!*.pub
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Tooling caches / build output
+.cache/
+.conftest-cache/
+.pre-commit-cache/
+__pycache__/
+*.py[cod]
+.venv/
+node_modules/
+dist/
+build/
+coverage/
+*.egg-info/
