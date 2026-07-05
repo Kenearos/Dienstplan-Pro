@@ -3,15 +3,6 @@
 Fundierte Liste offener Punkte in der Bonusberechnung — verifiziert im Code,
 nicht spekulativ. Referenz-Spec: `docs/specs/2026-05-11-bonus-varianten-design.md`.
 
-## Bugs (Implementierung weicht vom Spec ab)
-
-- **Tie-Breaker inkonsistent mit Spec §5.** Spec sagt: bei Bonus-Gleichstand
-  gewinnt immer die niedrigere `variantId`. `calculateMonthlyBonus` fügt aber
-  eine zusätzliche Eligibility-Regel ein (`r.eligible && !winner.eligible`),
-  die den Sieger bei Bonus-Gleichstand 0 auf eine höhere Variante umbiegen
-  kann, wenn diese "eligible" ist und V1 es nicht ist. Entweder Spec oder Code
-  anpassen. `calculator.js:72-80`
-
 ## Fachliche Lücken (nicht im Spec abgedeckt)
 
 - **Feiertage nur bis 2030 hinterlegt.** `HolidayProvider` kennt Feiertage nur
