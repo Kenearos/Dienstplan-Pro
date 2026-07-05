@@ -2,6 +2,11 @@
  * Main Application
  * Manages UI interactions and coordinates between components
  */
+function monthName(monthNumber) {
+    return new Intl.DateTimeFormat('de-DE', { month: 'long' }).format(new Date(2000, monthNumber - 1, 1));
+}
+const WEEKDAY_NAMES = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
 class DienstplanApp {
     constructor() {
         this.storage = new DataStorage();
@@ -134,7 +139,7 @@ class DienstplanApp {
         document.getElementById('calc-year-select').value = currentYear;
 
         // Set date input to today
-        const today = new Date().toISOString().split('T')[0];
+        const today = this.holidayProvider.formatDate(new Date());
         document.getElementById('duty-date').value = today;
 
         this.updateDateStepperState();
@@ -330,10 +335,7 @@ class DienstplanApp {
         const newDay = curDay + delta;
         if (newDay < 1 || newDay > lastDay) return; // clamp
         const newDate = new Date(year, month - 1, newDay, 12, 0, 0);
-        const yyyy = newDate.getFullYear();
-        const mm   = String(newDate.getMonth() + 1).padStart(2, '0');
-        const dd   = String(newDate.getDate()).padStart(2, '0');
-        dateInput.value = `${yyyy}-${mm}-${dd}`;
+        dateInput.value = this.holidayProvider.formatDate(newDate);
         this.updateDateStepperState();
     }
 
@@ -402,9 +404,7 @@ class DienstplanApp {
         const duties = this.storage.getDutiesForMonth(employeeName, year, month);
 
         if (duties.length === 0) {
-            const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-                              'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-            container.innerHTML = `<p class="text-muted">Keine Dienste für ${monthNames[month - 1]} ${year}.</p>`;
+            container.innerHTML = `<p class="text-muted">Keine Dienste für ${monthName(month)} ${year}.</p>`;
             return;
         }
 
@@ -463,10 +463,7 @@ class DienstplanApp {
 
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
-        const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-                          'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-
-        resultsContainer.innerHTML = `<h3>Ergebnisse für ${monthNames[month - 1]} ${year}</h3>`;
+        resultsContainer.innerHTML = `<h3>Ergebnisse für ${monthName(month)} ${year}</h3>`;
 
         const employees = Object.keys(results);
         if (employees.length === 0) {
@@ -631,9 +628,9 @@ class DienstplanApp {
         });
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
-        const monthName = this.getMonthName(month);
+        const monthLabel = monthName(month);
 
-        let reportHtml = `<h3>Dienstplan Abrechnung ${monthName} ${year}</h3>`;
+        let reportHtml = `<h3>Dienstplan Abrechnung ${monthLabel} ${year}</h3>`;
         
         // 1. Copy-Paste Table
         reportHtml += `<div style="background: #ffffff; padding: 15px; border: 1px solid #ddd;">`;
@@ -702,16 +699,17 @@ class DienstplanApp {
 
         // Modal Logic
         const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);display:flex;justify-content:center;align-items:center;z-index:1000;';
+        modal.className = 'modal';
         modal.innerHTML = `
-            <div style="background:white;padding:20px;border-radius:8px;max-width:800px;width:90%;max-height:90vh;overflow-y:auto;position:relative;box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                <button id="close-modal-btn" style="position:absolute;top:10px;right:10px;border:none;background:none;font-size:24px;cursor:pointer;">&times;</button>
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <button class="modal-close" id="close-modal-btn" aria-label="Schliessen">&times;</button>
                 <h2 style="margin-top:0;">📧 E-Mail Text-Generator</h2>
                 <p class="text-muted">Kopieren Sie diesen Inhalt direkt in Ihre E-Mail an die Verwaltung.</p>
                 <div id="report-content">
                     ${reportHtml}
                 </div>
-                <div style="margin-top:20px;text-align:right;border-top: 1px solid #eee; padding-top: 15px;">
+                <div class="modal-actions">
                     <button id="copy-btn" class="btn btn-primary" style="font-size: 1.1em;">📋 Alles markieren & kopieren</button>
                     <button id="close-btn-bottom" class="btn btn-secondary">Schließen</button>
                 </div>
@@ -719,6 +717,7 @@ class DienstplanApp {
         `;
         document.body.appendChild(modal);
 
+        modal.querySelector('.modal-backdrop').onclick = () => modal.remove();
         modal.querySelector('#close-modal-btn').onclick = () => modal.remove();
         modal.querySelector('#close-btn-bottom').onclick = () => modal.remove();
         
@@ -761,10 +760,7 @@ class DienstplanApp {
      * Exports all duties and monthly summary for the selected month
      */
     exportCSV() {
-        const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-                          'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-        const weekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-        
+
         const month = parseInt(document.getElementById('calc-month-select').value);
         const year = parseInt(document.getElementById('calc-year-select').value);
         
@@ -781,7 +777,7 @@ class DienstplanApp {
         let csv = '\uFEFF'; // UTF-8 BOM for Excel
         
         // === Sheet 1: Dienste (All Duties for the month) ===
-        csv += `DIENSTE ${monthNames[month - 1]} ${year}\n`;
+        csv += `DIENSTE ${monthName(month)} ${year}\n`;
         csv += 'Datum;Wochentag;Mitarbeiter;Anteil;Tagestyp\n';
         
         const employees = this.storage.getEmployees();
@@ -804,7 +800,7 @@ class DienstplanApp {
         allDuties.forEach(duty => {
             const isQual = this.calculator.isQualifyingDay(duty.date);
             const dateStr = duty.date.toLocaleDateString('de-DE');
-            const weekday = weekdays[duty.date.getDay()];
+            const weekday = WEEKDAY_NAMES[duty.date.getDay()];
             const dayType = isQual ? 'WE-Tag' : 'Werktag (WT)';
             
             csv += `${dateStr};${weekday};${escapeCSV(duty.employee)};${duty.share.toFixed(1).replace('.', ',')};${dayType}\n`;
@@ -813,7 +809,7 @@ class DienstplanApp {
         csv += '\n\n';
         
         // === Sheet 2: Monatliche Auswertung ===
-        csv += `AUSWERTUNG ${monthNames[month - 1]} ${year}\n`;
+        csv += `AUSWERTUNG ${monthName(month)} ${year}\n`;
         csv += 'Mitarbeiter;Urlaub;Sieger-Variante;Fr;Sa;So;Werktage;Eligible;Abzug Fr;Abzug Sa;Abzug So;Abzug WT;Bonus (EUR)\n';
 
         const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
@@ -875,10 +871,7 @@ class DienstplanApp {
      * Opens in a new window for printing or saving as PDF
      */
     exportBonusReport() {
-        const monthNames = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni',
-                          'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
-        const weekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-        
+
         const month = parseInt(document.getElementById('calc-month-select').value);
         const year = parseInt(document.getElementById('calc-year-select').value);
         
@@ -926,7 +919,7 @@ class DienstplanApp {
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Bonuszahlungen ${monthNames[month - 1]} ${year}</title>
+    <title>Bonuszahlungen ${monthName(month)} ${year}</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -1030,9 +1023,9 @@ class DienstplanApp {
 </div>
 
 <h3>Bonuszahlungen</h3>
-<h5>Monat ${monthNames[month - 1]} ${year} mit Auszahlung Ende ${monthNames[payoutMonth]} ${payoutYear}</h5>
+<h5>Monat ${monthName(month)} ${year} mit Auszahlung Ende ${monthName(payoutMonth + 1)} ${payoutYear}</h5>
 
-<p>Für die im ${monthNames[month - 1]} ${year} geleisteten Bereitschaftsdienste ergeben sich folgende Bonuszahlungen:</p>
+<p>Für die im ${monthName(month)} ${year} geleisteten Bereitschaftsdienste ergeben sich folgende Bonuszahlungen:</p>
 
 <table>
     <thead>
@@ -1247,10 +1240,6 @@ class DienstplanApp {
         return num.toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
     }
 
-    getMonthName(monthIndex) {
-        const names = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
-        return names[monthIndex - 1];
-    }
 }
 
 // Initialize app when DOM is ready

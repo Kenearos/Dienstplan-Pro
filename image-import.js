@@ -258,21 +258,14 @@ class ImageImporter {
     }
 
     /**
-     * Slot classification, duplicated from Feature B per spec section 9.3 (independent feature).
+     * Slot classification. Delegates to the shared classify() from variants.js;
+     * falls back to a no-holidays provider when this.holidayProvider is unset.
      * @param {Date} date
      * @returns {'fr'|'sa'|'so'|'weekday'}
      */
     classify(date) {
-        const wd = date.getDay();
-        if (wd === 5) return 'fr';
-        if (wd === 6) return 'sa';
-        if (wd === 0) return 'so';
-        const isFeiertag = this.holidayProvider && this.holidayProvider.isHoliday(date);
-        const isTagVorFeiertag = this.holidayProvider && this.holidayProvider.isDayBeforeHoliday(date);
-        if (isFeiertag && isTagVorFeiertag) return 'sa';
-        if (isTagVorFeiertag) return 'fr';
-        if (isFeiertag) return 'so';
-        return 'weekday';
+        const holidayProvider = this.holidayProvider || { isHoliday: () => false, isDayBeforeHoliday: () => false };
+        return window.classify(date, holidayProvider);
     }
 
     /**

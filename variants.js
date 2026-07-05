@@ -4,7 +4,9 @@
  * Loaded after holidays.js and before calculator.js.
  */
 
-// Will be implemented in subsequent tasks.
+const RATE_NORMAL  = 250;
+const RATE_WEEKEND = 450;
+
 function classify(date, holidayProvider) {
     const wd = date.getDay(); // 0=So, 1=Mo, ..., 5=Fr, 6=Sa
 
@@ -34,8 +36,6 @@ function classifyDuties(duties, holidayProvider) {
 }
 
 function variant1(classified, isVacation) {
-    const RATE_NORMAL  = 250;
-    const RATE_WEEKEND = 450;
     const frSoThreshold    = isVacation ? 0.5 : 1;
     const weekdayThreshold = isVacation ? 1.5 : 3;
     const frSoDeduction    = isVacation ? 0.5 : 1;
@@ -89,8 +89,6 @@ function variant1(classified, isVacation) {
 }
 
 function variant2(classified, isVacation) {
-    const RATE_NORMAL  = 250;
-    const RATE_WEEKEND = 450;
     const saThreshold      = isVacation ? 0.5 : 1;
     const weekdayThreshold = isVacation ? 1   : 2;
     const saDeduction      = isVacation ? 0.5 : 1;
@@ -135,8 +133,6 @@ function variant2(classified, isVacation) {
 }
 
 function variant3(classified, isVacation) {
-    const RATE_NORMAL  = 250;
-    const RATE_WEEKEND = 450;
     const poolThreshold = isVacation ? 1 : 2;
     const totalDeduction = isVacation ? 1 : 2;
 

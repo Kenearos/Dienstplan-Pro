@@ -6,8 +6,6 @@
 class BonusCalculator {
     constructor(holidayProvider) {
         this.holidayProvider = holidayProvider;
-        this.RATE_NORMAL  = 250;
-        this.RATE_WEEKEND = 450;
     }
 
     /**
@@ -111,16 +109,13 @@ class BonusCalculator {
             deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
             paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
             bonus: 0,
-            isWinner: true
+            isWinner: false
         };
         return {
             classified: { fr: 0, sa: 0, so: 0, weekday: 0 },
             isVacation,
-            winner: empty,
-            allResults: [empty,
-                { ...empty, variantId: 2, isWinner: false },
-                { ...empty, variantId: 3, isWinner: false }
-            ],
+            winner: { ...empty, isWinner: true },
+            allResults: [1, 2, 3].map(variantId => ({ ...empty, variantId, isWinner: variantId === 1 })),
             totalBonus: 0,
             totalDuties: 0,
             dutyDetails: []
