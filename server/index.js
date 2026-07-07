@@ -9,6 +9,7 @@ const { sendMagicLink } = require('./mailer');
 const {
   normalizeEmail, hashToken, createLoginToken, consumeLoginToken,
   createSession, validateSession, deleteSession, SESSION_TTL_DAYS,
+  seedAdmin, migrateToMultiUser,
 } = require('./auth');
 
 const app = express();
@@ -43,7 +44,7 @@ function authMiddleware(req, res, next) {
   const raw = req.cookies && req.cookies[SESSION_COOKIE];
   const u = raw ? validateSession(raw) : null;
   if (!u) { clearSessionCookie(res); return res.status(401).json({ error: 'nicht angemeldet' }); }
-  req.user = u;
+  req.user = { id: u.userId, email: u.email, isAdmin: u.isAdmin };
   next();
 }
 function adminMiddleware(req, res, next) {
@@ -118,25 +119,28 @@ app.post('/api/admin/login-link', authMiddleware, adminMiddleware, (req, res) =>
   res.json({ url: `${baseUrl(req)}/auth?token=${raw}` });
 });
 
-// ── Daten (global — wird in Epic 3.1 pro Nutzer + hinter Auth gestellt) ──
-app.get('/api/state', (req, res) => {
+// ── Daten pro Nutzer (hinter Auth; user_id NUR aus der Session, nie aus dem Client) ──
+app.get('/api/state', authMiddleware, (req, res) => {
   const state = { ...EMPTY, updatedAt: null };
   for (const key of KEYS) {
-    const doc = getDoc(key);
+    const doc = getDoc(req.user.id, key);
     if (doc) { state[key] = doc.value; if (!state.updatedAt || doc.updatedAt > state.updatedAt) state.updatedAt = doc.updatedAt; }
   }
   res.json(state);
 });
-app.put('/api/state', (req, res) => {
+app.put('/api/state', authMiddleware, (req, res) => {
   const body = req.body || {};
   const now = new Date().toISOString();
-  for (const key of KEYS) { if (body[key] !== undefined) putDoc(key, body[key], now); }
+  for (const key of KEYS) { if (body[key] !== undefined) putDoc(req.user.id, key, body[key], now); }
   res.json({ status: 'ok', updatedAt: now });
 });
 
 app.use(express.static(path.join(__dirname, '..')));
 
 if (require.main === module) {
+  // Startup-Reihenfolge: Fail-Fast auf ADMIN_EMAIL → Seed → Migration → listen.
+  const adminId = seedAdmin(process.env.ADMIN_EMAIL);
+  migrateToMultiUser(adminId);
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, '0.0.0.0', () => { console.log(`Dienstplan-Pro auf :${PORT}`); scheduleBackups(); });
 }
