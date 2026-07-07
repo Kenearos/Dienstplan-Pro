@@ -13,9 +13,6 @@ class DienstplanApp {
         this.holidayProvider = new HolidayProvider();
         this.calculator = new BonusCalculator(this.holidayProvider);
 
-        this.currentMonth = new Date().getMonth() + 1;
-        this.currentYear = new Date().getFullYear();
-
         this.init();
     }
 
@@ -1237,4 +1234,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     app = new DienstplanApp();
     window.app = app;
+
+    // Bild-Import hier erzeugen (nicht in einem eigenen DOMContentLoaded-Listener):
+    // window.app wird erst nach dem await oben gesetzt, ein paralleler Listener
+    // liefe da noch ohne app und wuerde den Importer nie anlegen.
+    if (window.ImageImporter && !window.imageImporter) {
+        window.imageImporter = new window.ImageImporter(app);
+    }
 });

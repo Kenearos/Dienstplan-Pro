@@ -211,7 +211,14 @@ class ImageImporter {
      * @returns {string}
      */
     normalizeName(name) {
-        return String(name).toLowerCase().trim().replace(/\s+/g, ' ');
+        return String(name)
+            .toLowerCase()
+            .trim()
+            .replace(/\s+/g, ' ')
+            // Anreden/Titel am Anfang entfernen (auch gestapelt: "Herr Dr."),
+            // damit "Herr Alsholi" auf einen ohne Anrede gespeicherten "Alsholi" matcht.
+            .replace(/^((herr|frau|hr|fr|dr|prof)\.?\s+)+/i, '')
+            .trim();
     }
 
     /**
@@ -288,6 +295,13 @@ class ImageImporter {
             key = input.trim();
         }
 
+        // Zielmonat/-jahr aus dem Live-Dropdown lesen (einzige Quelle der Wahrheit).
+        // Ein gecachtes Feld driftet, sobald das Dropdown ohne Sync geaendert wird.
+        const monthEl = document.getElementById('month-select');
+        const yearEl = document.getElementById('year-select');
+        const selMonth = monthEl ? parseInt(monthEl.value, 10) : NaN;
+        const selYear = yearEl ? parseInt(yearEl.value, 10) : NaN;
+
         this.session = {
             file: null,
             thumbnailUrl: null,
@@ -296,8 +310,9 @@ class ImageImporter {
             entries: [],
             unknowns: [],
             resolvedNames: new Map(),
-            targetYear: this.app ? this.app.currentYear : new Date().getFullYear(),
-            targetMonth: this.app ? this.app.currentMonth : (new Date().getMonth() + 1),
+            targetYear: Number.isInteger(selYear) ? selYear : new Date().getFullYear(),
+            targetMonth: (Number.isInteger(selMonth) && selMonth >= 1 && selMonth <= 12)
+                ? selMonth : (new Date().getMonth() + 1),
             detectedMonth: null,
             detectedYear: null,
             notes: []
@@ -853,6 +868,7 @@ Regeln:
 - Datum stets im ISO-Format YYYY-MM-DD.
 - Wenn das Bild einen Monatstitel zeigt (z.B. „November 2025"), gib \`month\` (1–12) und \`year\` (vierstellig) in der Antwort an. Sonst null.
 - Wenn ein Name unklar zu lesen ist, übernimm deinen besten Ratevorschlag und vermerke es in \`notes\`.
+- Gib Namen OHNE Anrede/Titel zurück (kein „Herr", „Frau", „Hr.", „Fr.", „Dr.", „Prof.") — nur den Nachnamen wie in der Tabelle.
 
 Antworte STRIKT in diesem JSON-Schema und sonst nichts:
 {
@@ -864,13 +880,15 @@ Antworte STRIKT in diesem JSON-Schema und sonst nichts:
   "notes": ["string", ...]
 }`;
 
-// Make available globally
-window.ImageImporter = ImageImporter;
+// Make available globally (Browser) + require-bar (Node-Tests)
+if (typeof window !== 'undefined') window.ImageImporter = ImageImporter;
+if (typeof module !== 'undefined' && module.exports) module.exports = ImageImporter;
 
-// Auto-instantiate when DOM + app are ready
+// Fallback-Instantiierung: app.js erzeugt den Importer regulaer nach dem
+// Sync-Boot. Dieser Listener greift nur, falls app schon frueher bereitsteht.
 if (typeof document !== 'undefined') {
     document.addEventListener('DOMContentLoaded', () => {
-        if (window.app) {
+        if (window.app && !window.imageImporter) {
             window.imageImporter = new ImageImporter(window.app);
         }
     });
