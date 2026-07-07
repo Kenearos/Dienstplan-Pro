@@ -54,34 +54,28 @@ Script loading order in `index.html` is critical:
 
 ## Business Logic
 
-### Qualifying Days (WE/Feiertag)
+### Tag-Klassifizierung (Slot pro Dienst)
 
-A day is "qualifying" (eligible for higher bonus rate) if ANY of:
-- **Weekend**: Friday (5), Saturday (6), or Sunday (0)
-- **Public Holiday**: Any NRW state holiday
-- **Day Before Holiday**: The calendar day preceding a public holiday
+Jeder Dienst bekommt genau einen Slot (`variants.js` → `classify`):
+- **fr**: echter Freitag · oder Tag vor einem Mo–Do-Feiertag
+- **sa**: echter Samstag · oder Sandwich-Tag (Feiertag UND Tag davor)
+- **so**: echter Sonntag · oder Mo–Do-Feiertag (ohne Sandwich)
+- **weekday**: Mo–Do ohne Feiertagsbezug
 
-### Bonus Calculation Rules
+Echte Fr/Sa/So gewinnen immer. Sätze: `fr/sa/so` = 450 €, `weekday` = 250 €; Anteile 0,5 oder 1,0.
 
-```
-Constants:
-- RATE_NORMAL = 250€  (normal weekday rate)
-- RATE_WEEKEND = 450€ (qualifying day rate)
-- MIN_QUALIFYING_DAYS = 2.0 (threshold)
-- DEDUCTION_AMOUNT = 2.0 (deducted from qualifying days)
+### Bonus-Berechnung (3 Varianten — `variants.js`, NICHT mehr das alte 2.0-Schwellen-Modell)
 
-Algorithm:
-1. Count qualifying days (Friday, Sat, Sun, holidays, day-before-holiday)
-2. Count normal days (Mon-Thu, not holiday-related)
-3. If qualifyingDays < 2.0: NO BONUS (total = 0€)
-4. If qualifyingDays >= 2.0:
-   - Deduct 2.0 from qualifying days (Friday priority)
-   - Bonus = (normalDays × 250€) + (remainingQualifyingDays × 450€)
-```
+`calculator.js` läuft alle drei Varianten und nimmt die mit dem höchsten Betrag (Gleichstand → niedrigste Variantennummer). Werte normal (Urlaub = halbiert):
+- **V1** — greift wenn `fr+so ≥ 1` UND `weekday ≥ 3`; Abzug 1 aus fr+so (Fr-Priorität) + 3 weekday; `sa` wird voll bezahlt.
+- **V2** — greift wenn `sa ≥ 1` UND `weekday ≥ 2`; Abzug 1 sa + 2 weekday; `fr`/`so` werden voll bezahlt.
+- **V3** — greift wenn `fr+sa+so ≥ 2`; Abzug 2 aus dem Pool (Reihenfolge fr → so → sa); `weekday` wird voll bezahlt.
 
-### Friday Priority Deduction
+**Urlaubsmodus** (Flag pro Mitarbeiter/Monat) halbiert alle Schwellen und Abzüge. Maßgeblich ist `variants.js`; die In-App-Doku (Einstellungen → Berechnungsregeln) ist aktuell.
 
-When deducting the 2.0 qualifying days, Fridays are deducted first before Saturday/Sunday/holidays. This is tracked via `qualifyingDaysFriday` and `qualifyingDaysOther` in the calculator.
+### Mehrbenutzer (v1.0)
+
+Seit dem Team-Release ist die App hinter Magic-Link-Login; Daten sind pro Nutzer (`user_id`) getrennt. Backend in `server/` (auth.js, index.js, mailer.js, ratelimit.js, audit.js). Konfiguration via Env-Variablen — siehe `.env.example` (u.a. `ADMIN_EMAIL` Pflicht/Fail-Fast, SMTP, Session-Fristen).
 
 ### Duty Shares
 

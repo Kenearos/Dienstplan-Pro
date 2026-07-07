@@ -1228,17 +1228,42 @@ class DienstplanApp {
 // Initialize app when DOM is ready
 let app;
 document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Auth-Status. Offline-bewusst: 401 = ungültige Session → Login-Overlay;
+    //    Netzwerkfehler (Server weg) = NICHT aussperren, App läuft lokal weiter (NFR-8).
+    let me = null;
+    try {
+        const res = await fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' });
+        if (res.status === 401) {
+            if (window.AuthUI) window.AuthUI.showLogin();
+            return; // App nicht starten
+        }
+        if (res.ok) me = await res.json();
+    } catch (e) {
+        console.warn('auth/me offline — App läuft lokal weiter:', e.message);
+    }
+
+    // 2. Nutzerwechsel-Isolation: anderer Nutzer als zuletzt gemerkt → lokale Daten + Key leeren.
+    if (me && me.email) {
+        const stored = localStorage.getItem('dienstplan_current_user');
+        if (stored && stored !== me.email && window.AuthUI) window.AuthUI.clearLocalData();
+        localStorage.setItem('dienstplan_current_user', me.email);
+    }
+
+    // 3. App starten
+    if (window.AuthUI) window.AuthUI.hideLogin();
     if (window.DataSync) {
         try { await window.DataSync.boot(); }
         catch (e) { console.error('Sync-Boot fehlgeschlagen, App laeuft lokal weiter:', e); }
     }
     app = new DienstplanApp();
     window.app = app;
-
-    // Bild-Import hier erzeugen (nicht in einem eigenen DOMContentLoaded-Listener):
-    // window.app wird erst nach dem await oben gesetzt, ein paralleler Listener
-    // liefe da noch ohne app und wuerde den Importer nie anlegen.
     if (window.ImageImporter && !window.imageImporter) {
         window.imageImporter = new window.ImageImporter(app);
+    }
+
+    // 4. Konto/Admin-UI
+    if (window.AuthUI) {
+        window.AuthUI.wireLogout();
+        if (me && me.isAdmin) window.AuthUI.showAdminSection();
     }
 });

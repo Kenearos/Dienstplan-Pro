@@ -124,9 +124,14 @@ function variant3(classified, isVacation) {
     return payResult(3, threshold, classified, deduction);
 }
 
-// Expose globally
-window.classify = classify;
-window.classifyDuties = classifyDuties;
-window.variant1 = variant1;
-window.variant2 = variant2;
-window.variant3 = variant3;
+// Expose globally (Browser) + require-bar (Node-Tests)
+if (typeof window !== 'undefined') {
+  window.classify = classify;
+  window.classifyDuties = classifyDuties;
+  window.variant1 = variant1;
+  window.variant2 = variant2;
+  window.variant3 = variant3;
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { classify, classifyDuties, variant1, variant2, variant3, RATE_NORMAL, RATE_WEEKEND };
+}

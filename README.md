@@ -8,9 +8,17 @@ Eine Web-Anwendung zur Berechnung von Bonuszahlungen für Wochenend- und Feierta
 - ✅ **Dienstplanung**: Dienste für beliebige Monate eintragen (ganze und halbe Dienste)
 - ✅ **Automatische Feiertagserkennung**: NRW-Feiertage 2025-2030
 - ✅ **Bonusberechnung**: Automatische Berechnung nach festgelegten Regeln
+- ✅ **Team-Login (v1.0)**: Passwortlose Anmeldung per Magic-Link; jeder Nutzer hat eine eigene, getrennte Datenbasis
+- ✅ **Server-Persistenz + Offline-Sync**: Daten liegen serverseitig (SQLite) und synchronisieren; LocalStorage als Offline-Cache
 - ✅ **Datenexport/Import**: JSON-Export für Backup und Migration
-- ✅ **LocalStorage**: Alle Daten werden lokal im Browser gespeichert
 - ✅ **Responsive Design**: Funktioniert auf Desktop und Mobilgeräten
+
+## Team-Betrieb (v1.0)
+
+- **Anmelden:** freigeschaltete Arbeits-E-Mail eingeben → Login-Link per Mail → bestätigen. Kein Passwort. Sitzung ~30 Tage (bzw. 8 h Inaktivität).
+- **Admin** (per `ADMIN_EMAIL` beim ersten Start angelegt) verwaltet unter **Einstellungen → Konto & Team**, wer teilnehmen darf, und behält den Team-Blick; **reguläre Nutzer** erfassen nur ihre eigene Person.
+- **Datentrennung** ist serverseitig erzwungen — niemand sieht fremde Daten.
+- Konfiguration: siehe `.env.example`. SMTP mit SPF/DKIM einrichten, sonst landen Login-Links im Spam.
 
 ## Berechnungsregeln
 
@@ -19,13 +27,8 @@ Eine Web-Anwendung zur Berechnung von Bonuszahlungen für Wochenend- und Feierta
 - **Feiertage**: Alle gesetzlichen Feiertage in NRW
 - **Tag vor Feiertag**: Der Tag vor einem gesetzlichen Feiertag
 
-### Bonusberechnung
-1. **Schwellenwert**: Mindestens **2.0 qualifizierende Tage** im Monat erforderlich
-2. **Abzug**: Bei Erreichen des Schwellenwerts werden **2.0 qualifizierende Tage** abgezogen (Freitag-Priorität)
-3. **Vergütung**:
-   - Normale Tage: **250€** pro Tag
-   - Qualifizierende Tage (WE/Feiertag): **450€** pro Tag
-   - Halbe Dienste: Jeweils die Hälfte
+### Bonusberechnung (NRW Psychiatrie 2011 — 3 Varianten)
+Jeder Dienst wird in einen Slot klassifiziert (`fr`/`sa`/`so` = **450 €**, `weekday` = **250 €**; inkl. Feiertags-Verschiebung). Der Bonus wird über **drei Varianten** (V1/V2/V3) berechnet — es gewinnt die mit dem höchsten Betrag; bei Gleichstand die niedrigste Variantennummer. Der **Urlaubsmodus** halbiert Schwellen und Abzüge. Die vollständigen Regeln (Schwellen/Abzüge je Variante) stehen in der App unter **Einstellungen → Berechnungsregeln**.
 
 ### Beispiel
 Mitarbeiter hat im Monat:
