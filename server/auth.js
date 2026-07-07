@@ -37,13 +37,16 @@ function createLoginToken(userId) {
  */
 function consumeLoginToken(raw) {
   const now = new Date().toISOString();
-  const row = db.prepare(`
-    SELECT t.token_hash AS tokenHash, t.user_id AS userId, u.email, u.is_admin AS isAdmin
-    FROM login_tokens t JOIN users u ON t.user_id = u.id
-    WHERE t.token_hash = ? AND t.used_at IS NULL AND t.expires_at > ?
-  `).get(hashToken(raw), now);
-  if (!row) return null;
-  db.prepare('UPDATE login_tokens SET used_at = ? WHERE token_hash = ?').run(now, row.tokenHash);
+  const th = hashToken(raw);
+  // Atomarer Claim: der UPDATE beansprucht den Token in EINEM Statement (nur wenn
+  // unbenutzt UND nicht abgelaufen). Kein SELECT-dann-UPDATE-TOCTOU, auch prozessübergreifend.
+  const info = db.prepare(
+    'UPDATE login_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?'
+  ).run(now, th, now);
+  if (info.changes !== 1) return null;
+  const row = db.prepare(
+    'SELECT t.user_id AS userId, u.email, u.is_admin AS isAdmin FROM login_tokens t JOIN users u ON t.user_id = u.id WHERE t.token_hash = ?'
+  ).get(th);
   return { userId: row.userId, email: row.email, isAdmin: !!row.isAdmin };
 }
 
