@@ -37,22 +37,10 @@ class BonusCalculator {
     }
 
     /**
-     * Build the dutyDetails array (date, share, isQualifying, dayType) for the UI.
-     */
-    buildDutyDetails(duties) {
-        return duties.map(duty => ({
-            date: duty.date,
-            share: duty.share,
-            isQualifying: this.isQualifyingDay(duty.date),
-            dayType: this.getDayTypeLabel(duty.date)
-        }));
-    }
-
-    /**
      * Calculate the bonus for a single employee for a given month.
      * @param {Array} duties - Array of { date: Date, share: number }
      * @param {boolean} isVacation - Vacation toggle (halves thresholds + deductions)
-     * @returns {Object} new-shape result (winner, allResults, totalBonus, classified, isVacation, dutyDetails)
+     * @returns {Object} new-shape result (winner, allResults, totalBonus, classified, isVacation)
      */
     calculateMonthlyBonus(duties, isVacation = false) {
         if (!duties || duties.length === 0) {
@@ -83,9 +71,7 @@ class BonusCalculator {
             isVacation,
             winner,
             allResults: results,
-            totalBonus: winner.bonus,
-            totalDuties: duties.length,
-            dutyDetails: this.buildDutyDetails(duties)
+            totalBonus: winner.bonus
         };
     }
 
@@ -116,9 +102,7 @@ class BonusCalculator {
             isVacation,
             winner: { ...empty, isWinner: true },
             allResults: [1, 2, 3].map(variantId => ({ ...empty, variantId, isWinner: variantId === 1 })),
-            totalBonus: 0,
-            totalDuties: 0,
-            dutyDetails: []
+            totalBonus: 0
         };
     }
 

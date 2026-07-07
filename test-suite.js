@@ -284,9 +284,7 @@ runner.test('Berechnung: Keine Dienste = 0 EUR', (t) => {
     const holidays = new HolidayProvider();
     const calculator = new BonusCalculator(holidays);
     const result = calculator.calculateMonthlyBonus([], false);
-    t.assertEqual(result.totalDuties, 0, '0 duties');
     t.assertEqual(result.totalBonus, 0, '0 bonus');
-    t.assertEqual(result.dutyDetails.length, 0, '0 dutyDetails');
 });
 
 // ============================================================================
@@ -901,7 +899,7 @@ runner.test('Winner: nur V3 produziert positive bonus -> V3 winner', (t) => {
     t.assertEqual(result.totalBonus, 450, 'bonus=450');
 });
 
-runner.test('Winner: result-Shape enthaelt classified, isVacation, dutyDetails', (t) => {
+runner.test('Winner: result-Shape enthaelt classified, isVacation', (t) => {
     const hp = new HolidayProvider();
     const calc = new BonusCalculator(hp);
     const duties = [
@@ -911,8 +909,6 @@ runner.test('Winner: result-Shape enthaelt classified, isVacation, dutyDetails',
     const result = calc.calculateMonthlyBonus(duties, false);
     t.assertTrue('classified' in result, 'classified field exists');
     t.assertTrue('isVacation' in result, 'isVacation field exists');
-    t.assertTrue('dutyDetails' in result, 'dutyDetails field exists');
-    t.assertEqual(result.dutyDetails.length, 2, 'dutyDetails has 2 entries');
     t.assertEqual(result.isVacation, false, 'isVacation=false');
 });
 
