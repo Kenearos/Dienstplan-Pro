@@ -141,15 +141,6 @@ class HolidayProvider {
         const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
     }
-
-    /**
-     * Get all holidays for a specific year
-     * @param {number} year
-     * @returns {Array}
-     */
-    getHolidaysForYear(year) {
-        return this.holidays[year] || [];
-    }
 }
 
 // Make it available globally
