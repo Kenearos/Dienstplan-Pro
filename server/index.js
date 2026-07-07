@@ -25,7 +25,8 @@ const RATE_LIMIT_IP = parseInt(process.env.RATE_LIMIT_IP, 10) || 50;
 const RATE_LIMIT_WINDOW_MIN = parseInt(process.env.RATE_LIMIT_WINDOW_MIN, 10) || 15;
 
 const SESSION_COOKIE = 'session';
-const cookieSecure = (process.env.APP_BASE_URL || '').startsWith('https') || process.env.NODE_ENV === 'production';
+// Secure-by-default; nur für lokalen HTTP-Dev per COOKIE_INSECURE=true abschaltbar.
+const cookieSecure = process.env.COOKIE_INSECURE !== 'true';
 
 function setSessionCookie(res, raw) {
   res.cookie(SESSION_COOKIE, raw, {
@@ -67,7 +68,8 @@ app.post('/api/auth/request', async (req, res) => {
     db.prepare('UPDATE login_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL')
       .run(new Date().toISOString(), user.id);
     const raw = createLoginToken(user.id);
-    await sendMagicLink(email, `${baseUrl(req)}/auth?token=${raw}`);
+    try { await sendMagicLink(email, `${baseUrl(req)}/auth?token=${raw}`); }
+    catch (e) { console.error('sendMagicLink fehlgeschlagen:', e.message); } // neutral bleiben, nie hängen
   }
   res.json({ ok: true }); // immer identisch
 });
@@ -138,6 +140,7 @@ app.post('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
 
 app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) => {
   const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Ungültige ID' });
   const target = db.prepare('SELECT id, is_admin FROM users WHERE id = ?').get(id);
   if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
   if (target.id === req.user.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst entfernen.' });
