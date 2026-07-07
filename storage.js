@@ -141,20 +141,12 @@ class DataStorage {
 
             // Convert date strings back to Date objects
             return allDuties[employeeName][monthKey].map(duty => {
-                try {
-                    const dateObj = new Date(duty.date);
-                    if (isNaN(dateObj.getTime())) {
-                        console.error(`Fehler: Ungültiges Datum für Dienst: ${duty.date}`);
-                        return null;
-                    }
-                    return {
-                        ...duty,
-                        date: dateObj
-                    };
-                } catch (e) {
-                    console.error('Fehler beim Konvertieren des Datums:', e);
+                const dateObj = new Date(duty.date);
+                if (isNaN(dateObj.getTime())) {
+                    console.error(`Fehler: Ungültiges Datum für Dienst: ${duty.date}`);
                     return null;
                 }
+                return { ...duty, date: dateObj };
             }).filter(duty => duty !== null); // Filter out invalid entries
         } catch (e) {
             console.error('Fehler beim Laden der Dienste für Monat:', e);
