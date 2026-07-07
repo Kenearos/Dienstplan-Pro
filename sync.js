@@ -66,12 +66,14 @@ const DataSync = {
 
   push() {
     if (this._applying) return;
+    this._dirty = (this._dirty || 0) + 1;
     localStorage.setItem(this.KEY_PENDING, '1');
     clearTimeout(this._timer);
     this._timer = setTimeout(() => this._flush(), 500);
   },
 
   async _flush() {
+    const gen = this._dirty; // ponytail: Generationszaehler gegen Verlust-Race bei ueberlappenden Flushes
     try {
       const res = await fetch('/api/state', {
         method: 'PUT',
@@ -79,7 +81,7 @@ const DataSync = {
         body: JSON.stringify(this._local()),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      localStorage.removeItem(this.KEY_PENDING); // erst nach Erfolg
+      if (this._dirty === gen) localStorage.removeItem(this.KEY_PENDING); // nur wenn kein neuerer push() lief
       this.online = true;
     } catch (e) {
       console.error('Sync fehlgeschlagen, Daten bleiben lokal:', e);
