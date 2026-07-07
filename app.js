@@ -1230,7 +1230,11 @@ class DienstplanApp {
 
 // Initialize app when DOM is ready
 let app;
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    if (window.DataSync) {
+        try { await window.DataSync.boot(); }
+        catch (e) { console.error('Sync-Boot fehlgeschlagen, App laeuft lokal weiter:', e); }
+    }
     app = new DienstplanApp();
     window.app = app;
 });

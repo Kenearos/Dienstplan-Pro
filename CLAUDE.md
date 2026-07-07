@@ -194,21 +194,35 @@ docker run -p 3000:3000 -e PORT=3000 dienstplan-pro
 **Container:** `dienstplan-pro` on the `matrix_default` Docker network so the
 `matrix-caddy-1` reverse proxy can resolve it by hostname.
 
-The Dockerfile uses `serve` from npm to serve static files:
+The Dockerfile runs an Express server (`server/index.js`) that serves the
+static frontend **and** the `/api/state` persistence API, backed by SQLite:
 ```dockerfile
-FROM node:20-alpine
-RUN npm install -g serve
+FROM node:20-slim
 WORKDIR /app
+COPY package*.json ./
+RUN npm install --omit=dev
 COPY . .
-CMD serve -s . -l tcp://0.0.0.0:${PORT:-3000}
+ENV PORT=3000
+ENV DATA_DIR=/data
+EXPOSE 3000
+CMD ["node", "server/index.js"]
 ```
 
-Caddy block in `/opt/matrix/Caddyfile`:
+Caddy block in `/opt/matrix/Caddyfile` (app + `/api/*` behind Basic-Auth):
 ```
 bonus.pixel-by-design.de {
+    basic_auth {
+        benad <BCRYPT_HASH>
+    }
     reverse_proxy dienstplan-pro:3000
 }
 ```
+
+> **Wichtig:** Die SQLite-DB und die täglichen Backups liegen auf dem
+> benannten Docker-Volume `dienstplan-data` (`/data` im Container, Backups
+> unter `/data/backups/`). Niemals ohne dieses Volume deployen — sonst
+> löscht `docker rm` beim nächsten Update alle Daten unwiderruflich. Die
+> Domain ist komplett hinter Caddy Basic-Auth (gilt auch für `/api/*`).
 
 **Update procedure** (when pushing new code):
 ```bash
@@ -218,7 +232,8 @@ git pull
 docker build -t dienstplan-pro:latest .
 docker stop dienstplan-pro && docker rm dienstplan-pro
 docker run -d --name dienstplan-pro --network matrix_default \
-    --restart unless-stopped -e PORT=3000 dienstplan-pro:latest
+    --restart unless-stopped -e PORT=3000 -e DATA_DIR=/data \
+    -v dienstplan-data:/data dienstplan-pro:latest
 ```
 
 Caddy reloads not needed unless the Caddyfile changes.

@@ -1,14 +1,16 @@
-FROM node:20-alpine
+FROM node:20-slim
 
-# Install simple static file server
-RUN npm install -g serve
-
-# Create app directory
 WORKDIR /app
 
-# Copy all files
+# Erst Manifeste kopieren → Layer-Cache für npm install
+COPY package*.json ./
+RUN npm install --omit=dev
+
+# Rest der App
 COPY . .
 
-# Start server on the port defined by Railway ($PORT)
-# If $PORT is not set, default to 3000
-CMD serve -s . -l tcp://0.0.0.0:${PORT:-3000}
+ENV PORT=3000
+ENV DATA_DIR=/data
+EXPOSE 3000
+
+CMD ["node", "server/index.js"]

@@ -45,3 +45,6 @@ dist/
 build/
 coverage/
 *.egg-info/
+
+# Lokale Dev-DB + Backups (Laufzeitdaten, nie committen)
+data/
