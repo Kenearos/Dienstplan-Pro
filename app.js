@@ -455,12 +455,7 @@ class DienstplanApp {
 
         const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
 
-        // Build vacation map for this month: { name: boolean }
-        const vacationMap = {};
-        Object.keys(employeeDuties).forEach(name => {
-            vacationMap[name] = this.storage.getVacationMode(name, yearMonth);
-        });
-
+        const vacationMap = this.storage.getVacationMapForMonth(yearMonth);
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
         resultsContainer.innerHTML = `<h3>Ergebnisse für ${monthName(month)} ${year}</h3>`;
@@ -622,10 +617,7 @@ class DienstplanApp {
 
         const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
         const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
-        const vacationMap = {};
-        Object.keys(employeeDuties).forEach(n => {
-            vacationMap[n] = this.storage.getVacationMode(n, yearMonth);
-        });
+        const vacationMap = this.storage.getVacationMapForMonth(yearMonth);
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
         const monthLabel = monthName(month);
@@ -814,10 +806,7 @@ class DienstplanApp {
 
         const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
         const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
-        const vacationMap = {};
-        Object.keys(employeeDuties).forEach(name => {
-            vacationMap[name] = this.storage.getVacationMode(name, yearMonth);
-        });
+        const vacationMap = this.storage.getVacationMapForMonth(yearMonth);
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
         let totalBonus = 0;
@@ -1048,10 +1037,7 @@ class DienstplanApp {
 
         // Compute via BonusCalculator (uses winning variant)
         const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
-        const vacationMap = {};
-        Object.keys(employeeDuties).forEach(n => {
-            vacationMap[n] = this.storage.getVacationMode(n, yearMonth);
-        });
+        const vacationMap = this.storage.getVacationMapForMonth(yearMonth);
         const calcResults = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
         for (const [name, data] of Object.entries(employeeData)) {

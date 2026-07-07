@@ -308,6 +308,18 @@ class DataStorage {
     }
 
     /**
+     * Vacation flags for all employees for a given month: { name: boolean }.
+     * @param {string} yearMonth - format "YYYY-MM"
+     */
+    getVacationMapForMonth(yearMonth) {
+        const map = {};
+        for (const name of this.getEmployees()) {
+            map[name] = this.getVacationMode(name, yearMonth);
+        }
+        return map;
+    }
+
+    /**
      * Clear all data
      */
     clearAll() {
