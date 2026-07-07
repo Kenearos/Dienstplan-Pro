@@ -119,6 +119,36 @@ app.post('/api/admin/login-link', authMiddleware, adminMiddleware, (req, res) =>
   res.json({ url: `${baseUrl(req)}/auth?token=${raw}` });
 });
 
+// ── Admin: Nutzerverwaltung (Allowlist) ──────────────────────────────
+app.get('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
+  const rows = db.prepare('SELECT id, email, is_admin FROM users ORDER BY email').all();
+  res.json({ users: rows.map(u => ({ id: u.id, email: u.email, isAdmin: !!u.is_admin })) });
+});
+
+app.post('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
+  const email = normalizeEmail((req.body && req.body.email) || '');
+  if (!email || !email.includes('@')) return res.status(400).json({ error: 'Ungültige E-Mail' });
+  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  if (!existing) {
+    db.prepare('INSERT INTO users (email, is_admin, created_at) VALUES (?, 0, ?)').run(email, new Date().toISOString());
+    audit('admin_add', req.user.id, ipHashOf(req));
+  }
+  res.json({ ok: true });
+});
+
+app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const target = db.prepare('SELECT id, is_admin FROM users WHERE id = ?').get(id);
+  if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+  if (target.id === req.user.id) return res.status(400).json({ error: 'Du kannst dich nicht selbst entfernen.' });
+  if (target.is_admin && db.prepare('SELECT COUNT(*) c FROM users WHERE is_admin = 1').get().c <= 1) {
+    return res.status(400).json({ error: 'Der letzte Admin kann nicht entfernt werden.' });
+  }
+  db.prepare('DELETE FROM users WHERE id = ?').run(id); // CASCADE räumt Sessions/Tokens
+  audit('admin_remove', req.user.id, ipHashOf(req));
+  res.json({ ok: true });
+});
+
 // ── Daten pro Nutzer (hinter Auth; user_id NUR aus der Session, nie aus dem Client) ──
 app.get('/api/state', authMiddleware, (req, res) => {
   const state = { ...EMPTY, updatedAt: null };
