@@ -4,6 +4,11 @@ const { db } = require('./db');
 // Einmal-Token-Lebensdauer (Minuten). Scanner-sicher lang genug, aber kurz.
 const TOKEN_TTL_MIN = parseInt(process.env.TOKEN_TTL_MIN, 10) || 30;
 
+// Sitzung: absolute Frist + Inaktivitäts-Frist. last_seen wird gedrosselt geschrieben.
+const SESSION_TTL_DAYS = parseInt(process.env.SESSION_TTL_DAYS, 10) || 30;
+const SESSION_IDLE_HOURS = parseInt(process.env.SESSION_IDLE_HOURS, 10) || 8;
+const LAST_SEEN_THROTTLE_MS = 5 * 60 * 1000;
+
 /** Identische Normalisierung für Speicherung UND Abgleich (case-insensitive). */
 function normalizeEmail(email) {
   return String(email).toLowerCase().trim();
@@ -42,4 +47,56 @@ function consumeLoginToken(raw) {
   return { userId: row.userId, email: row.email, isAdmin: !!row.isAdmin };
 }
 
-module.exports = { normalizeEmail, hashToken, createLoginToken, consumeLoginToken, TOKEN_TTL_MIN };
+/**
+ * Erzeugt eine Sitzung, speichert nur den Hash der ID; gibt den Rohwert zurück
+ * (kommt ins httpOnly-Cookie).
+ */
+function createSession(userId) {
+  const raw = crypto.randomBytes(32).toString('hex');
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + SESSION_TTL_DAYS * 86400 * 1000).toISOString();
+  db.prepare('INSERT INTO sessions (id_hash, user_id, expires_at, created_at, last_seen_at) VALUES (?,?,?,?,?)')
+    .run(hashToken(raw), userId, expiresAt, now, now);
+  return raw;
+}
+
+/**
+ * Prüft eine Roh-Session-ID: existiert, nicht absolut abgelaufen, nicht idle abgelaufen.
+ * Bumpt last_seen nur, wenn älter als der Throttle (kein Write pro Request).
+ * @returns {{userId:number,email:string,isAdmin:boolean}|null}
+ */
+function validateSession(raw) {
+  const nowMs = Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const idh = hashToken(raw);
+  const row = db.prepare(`
+    SELECT s.id_hash AS idHash, s.user_id AS userId, s.expires_at AS expiresAt,
+           s.last_seen_at AS lastSeenAt, u.email, u.is_admin AS isAdmin
+    FROM sessions s JOIN users u ON s.user_id = u.id
+    WHERE s.id_hash = ?
+  `).get(idh);
+  if (!row) return null;
+  if (nowIso >= row.expiresAt) return null;                       // absolut abgelaufen
+  const idleMs = nowMs - Date.parse(row.lastSeenAt);
+  if (idleMs >= SESSION_IDLE_HOURS * 3600 * 1000) return null;    // idle abgelaufen
+  if (idleMs >= LAST_SEEN_THROTTLE_MS) {                          // gedrosselter Bump
+    db.prepare('UPDATE sessions SET last_seen_at = ? WHERE id_hash = ?').run(nowIso, idh);
+  }
+  return { userId: row.userId, email: row.email, isAdmin: !!row.isAdmin };
+}
+
+/** Beendet eine Sitzung (Logout) per Roh-ID. */
+function deleteSession(raw) {
+  db.prepare('DELETE FROM sessions WHERE id_hash = ?').run(hashToken(raw));
+}
+
+/** Löscht alle Sitzungen eines Nutzers (z.B. bei Nutzer-Löschung; CASCADE deckt es ohnehin ab). */
+function deleteUserSessions(userId) {
+  db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+}
+
+module.exports = {
+  normalizeEmail, hashToken, createLoginToken, consumeLoginToken,
+  createSession, validateSession, deleteSession, deleteUserSessions,
+  TOKEN_TTL_MIN, SESSION_TTL_DAYS, SESSION_IDLE_HOURS,
+};
