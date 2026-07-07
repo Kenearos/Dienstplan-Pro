@@ -52,8 +52,7 @@ function variant1(classified, isVacation) {
             threshold: { frSo: frSoThreshold, weekday: weekdayThreshold },
             deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
             paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            bonus: 0,
-            isWinner: false
+            bonus: 0
         };
     }
 
@@ -83,8 +82,7 @@ function variant1(classified, isVacation) {
         threshold: { frSo: frSoThreshold, weekday: weekdayThreshold },
         deduction,
         paidShares,
-        bonus,
-        isWinner: false
+        bonus
     };
 }
 
@@ -104,8 +102,7 @@ function variant2(classified, isVacation) {
             threshold: { sa: saThreshold, weekday: weekdayThreshold },
             deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
             paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            bonus: 0,
-            isWinner: false
+            bonus: 0
         };
     }
 
@@ -127,8 +124,7 @@ function variant2(classified, isVacation) {
         threshold: { sa: saThreshold, weekday: weekdayThreshold },
         deduction,
         paidShares,
-        bonus,
-        isWinner: false
+        bonus
     };
 }
 
@@ -146,8 +142,7 @@ function variant3(classified, isVacation) {
             threshold: { pool: poolThreshold },
             deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
             paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            bonus: 0,
-            isWinner: false
+            bonus: 0
         };
     }
 
@@ -177,8 +172,7 @@ function variant3(classified, isVacation) {
         threshold: { pool: poolThreshold },
         deduction,
         paidShares,
-        bonus,
-        isWinner: false
+        bonus
     };
 }
 

@@ -64,8 +64,6 @@ class BonusCalculator {
                 winner = r;
             }
         }
-        winner.isWinner = true;
-
         return {
             classified,
             isVacation,
@@ -94,14 +92,13 @@ class BonusCalculator {
             threshold: null,
             deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
             paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            bonus: 0,
-            isWinner: false
+            bonus: 0
         };
         return {
             classified: { fr: 0, sa: 0, so: 0, weekday: 0 },
             isVacation,
-            winner: { ...empty, isWinner: true },
-            allResults: [1, 2, 3].map(variantId => ({ ...empty, variantId, isWinner: variantId === 1 })),
+            winner: { ...empty },
+            allResults: [1, 2, 3].map(variantId => ({ ...empty, variantId })),
             totalBonus: 0
         };
     }
