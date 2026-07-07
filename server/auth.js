@@ -117,9 +117,38 @@ function seedAdmin(adminEmail) {
   return Number(existing.id);
 }
 
+/**
+ * Migriert die (globale) Single-User-Datenbasis auf Mehrbenutzer, indem alle
+ * Alt-Zeilen dem Admin zugeordnet werden. Atomar (eine Transaktion), idempotent
+ * (Guard über die documents.user_id-Spalte). Muss NACH seedAdmin laufen.
+ * @returns {boolean} true wenn migriert, false wenn bereits migriert (No-Op)
+ */
+function migrateToMultiUser(adminUserId) {
+  const cols = db.prepare("PRAGMA table_info('documents')").all().map(c => c.name);
+  if (cols.includes('user_id')) return false; // schon migriert
+  const tx = db.transaction(() => {
+    db.exec(`CREATE TABLE documents_v2 (
+      user_id    INTEGER NOT NULL,
+      key        TEXT NOT NULL,
+      value      TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, key)
+    )`);
+    db.prepare('INSERT INTO documents_v2 (user_id, key, value, updated_at) SELECT ?, key, value, updated_at FROM documents')
+      .run(adminUserId);
+    db.exec('DROP TABLE documents');
+    db.exec('ALTER TABLE documents_v2 RENAME TO documents');
+    const hcols = db.prepare("PRAGMA table_info('history')").all().map(c => c.name);
+    if (!hcols.includes('user_id')) db.exec('ALTER TABLE history ADD COLUMN user_id INTEGER');
+    db.prepare('UPDATE history SET user_id = ? WHERE user_id IS NULL').run(adminUserId);
+  });
+  tx();
+  return true;
+}
+
 module.exports = {
   normalizeEmail, hashToken, createLoginToken, consumeLoginToken,
   createSession, validateSession, deleteSession, deleteUserSessions,
-  seedAdmin,
+  seedAdmin, migrateToMultiUser,
   TOKEN_TTL_MIN, SESSION_TTL_DAYS, SESSION_IDLE_HOURS,
 };
