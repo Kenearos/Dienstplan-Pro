@@ -557,6 +557,22 @@ class ImageImporter {
     }
 
     /**
+     * Resolve one extracted entry name to a target employee, using confirmed
+     * matches first, then the unknown-choice map.
+     * @returns {{ resolved: string|null, isNew: boolean }} resolved=null means "ignore"
+     */
+    resolveEntryName(session, name, choiceByCandidate) {
+        if (session.resolvedNames.has(name)) {
+            return { resolved: session.resolvedNames.get(name), isNew: false };
+        }
+        const choice = choiceByCandidate.get(name) || 'new';
+        if (choice === 'ignore') return { resolved: null, isNew: false };
+        if (choice === 'new') return { resolved: name, isNew: true };
+        if (choice.startsWith('assign:')) return { resolved: choice.slice('assign:'.length), isNew: false };
+        return { resolved: name, isNew: false };
+    }
+
+    /**
      * Build Map<resolvedEmployeeName|null, [{ entry, index }]> based on session.entries
      * and unknowns choices.
      */
@@ -569,16 +585,7 @@ class ImageImporter {
         const grouped = new Map();
         for (let i = 0; i < this.session.entries.length; i++) {
             const e = this.session.entries[i];
-            let resolved;
-            if (this.session.resolvedNames.has(e.name)) {
-                resolved = this.session.resolvedNames.get(e.name);
-            } else {
-                const choice = choiceByCandidate.get(e.name) || 'new';
-                if (choice === 'ignore') resolved = null;
-                else if (choice === 'new') resolved = e.name;
-                else if (choice.startsWith('assign:')) resolved = choice.slice('assign:'.length);
-                else resolved = e.name;
-            }
+            const { resolved } = this.resolveEntryName(this.session, e.name, choiceByCandidate);
             if (!grouped.has(resolved)) grouped.set(resolved, []);
             grouped.get(resolved).push({ entry: e, index: i });
         }
@@ -723,21 +730,9 @@ class ImageImporter {
         let skippedOutsideMonth = 0;
 
         for (const e of session.entries) {
-            let resolved;
-            if (session.resolvedNames.has(e.name)) {
-                resolved = session.resolvedNames.get(e.name);
-            } else {
-                const choice = choiceByCandidate.get(e.name) || 'new';
-                if (choice === 'ignore') continue;
-                if (choice === 'new') {
-                    resolved = e.name;
-                    newEmployees.add(e.name);
-                } else if (choice.startsWith('assign:')) {
-                    resolved = choice.slice('assign:'.length);
-                } else {
-                    resolved = e.name;
-                }
-            }
+            const { resolved, isNew } = this.resolveEntryName(session, e.name, choiceByCandidate);
+            if (resolved === null) continue;
+            if (isNew) newEmployees.add(e.name);
 
             const y = e.date.getFullYear();
             const m = e.date.getMonth() + 1;
