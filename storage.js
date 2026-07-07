@@ -45,6 +45,7 @@ class DataStorage {
                 throw new TypeError('employees muss ein Array sein');
             }
             localStorage.setItem(this.STORAGE_KEY_EMPLOYEES, JSON.stringify(employees));
+            this._notifyChange();
         } catch (e) {
             console.error('Fehler beim Speichern der Mitarbeiter-Daten:', e);
             throw e;
@@ -117,6 +118,7 @@ class DataStorage {
                 throw new TypeError('duties muss ein gültiges Objekt sein');
             }
             localStorage.setItem(this.STORAGE_KEY_DUTIES, JSON.stringify(duties));
+            this._notifyChange();
         } catch (e) {
             console.error('Fehler beim Speichern der Dienst-Daten:', e);
             throw e;
@@ -285,6 +287,7 @@ class DataStorage {
             if (!map[employeeName]) map[employeeName] = {};
             map[employeeName][yearMonth] = Boolean(value);
             localStorage.setItem(this.STORAGE_KEY_VACATION, JSON.stringify(map));
+            this._notifyChange();
         } catch (e) {
             console.error('Fehler beim Speichern des Urlaubsmodus:', e);
             throw e;
@@ -320,12 +323,23 @@ class DataStorage {
     }
 
     /**
+     * Signalisiert dem Sync-Layer eine Aenderung (falls vorhanden).
+     * Wird unterdrueckt, waehrend DataSync gerade Server-Daten uebernimmt.
+     */
+    _notifyChange() {
+        if (typeof window !== 'undefined' && window.DataSync && !window.DataSync._applying) {
+            window.DataSync.push();
+        }
+    }
+
+    /**
      * Clear all data
      */
     clearAll() {
         localStorage.removeItem(this.STORAGE_KEY_EMPLOYEES);
         localStorage.removeItem(this.STORAGE_KEY_DUTIES);
         localStorage.removeItem(this.STORAGE_KEY_VACATION);
+        this._notifyChange();
     }
 
     /**
@@ -363,6 +377,7 @@ class DataStorage {
             if (data.vacation && typeof data.vacation === 'object') {
                 localStorage.setItem(this.STORAGE_KEY_VACATION, JSON.stringify(data.vacation));
             }
+            this._notifyChange();
             return true;
         } catch (e) {
             console.error('Import failed:', e);
