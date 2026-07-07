@@ -95,8 +95,31 @@ function deleteUserSessions(userId) {
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
 
+/**
+ * Legt den Admin aus ADMIN_EMAIL an (is_admin=1) bzw. befördert ihn; idempotent.
+ * Fail-Fast: leere/fehlende/ungültige E-Mail wirft — der Server darf dann nicht starten.
+ * @returns {number} adminUserId
+ */
+function seedAdmin(adminEmail) {
+  const email = normalizeEmail(adminEmail || '');
+  if (!email || !email.includes('@')) {
+    throw new Error('ADMIN_EMAIL fehlt oder ist ungültig — Server-Start abgebrochen (Fail-Fast).');
+  }
+  const now = new Date().toISOString();
+  const existing = db.prepare('SELECT id, is_admin FROM users WHERE email = ?').get(email);
+  if (!existing) {
+    const info = db.prepare('INSERT INTO users (email, is_admin, created_at) VALUES (?, 1, ?)').run(email, now);
+    return Number(info.lastInsertRowid);
+  }
+  if (!existing.is_admin) {
+    db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(existing.id);
+  }
+  return Number(existing.id);
+}
+
 module.exports = {
   normalizeEmail, hashToken, createLoginToken, consumeLoginToken,
   createSession, validateSession, deleteSession, deleteUserSessions,
+  seedAdmin,
   TOKEN_TTL_MIN, SESSION_TTL_DAYS, SESSION_IDLE_HOURS,
 };
