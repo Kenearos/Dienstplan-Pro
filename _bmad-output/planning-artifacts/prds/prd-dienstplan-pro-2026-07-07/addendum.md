@@ -57,3 +57,14 @@ Cookie setzen: `res.cookie('session', raw, {httpOnly:true, secure:true, sameSite
 ## Verifikation (Kurz)
 
 Node-Unit-Tests (Token-Hash/Consume, Session validate/delete, Migration idempotent, Rate-Limit, Datentrennung 2 Nutzer, 401/403). Browser-E2E: Server ohne SMTP → Magic-Link in Konsole → kompletter Login-/Trennungs-/Logout-/Nutzerwechsel-Durchlauf. Migration gegen Prod-DB-Kopie.
+
+## Review-Nachträge (Opus-4-Linsen + qwen)
+
+- **Migrations-Atomarität** ist bei **SQLite** real gegeben (echte Transaktion inkl. DDL) — kein Datei-Rollback nötig; Guard über `documents.user_id`-Existenz. Migration + history-Update in **einer** Transaktion, sonst Teilabbruch-Risiko (verwaiste history).
+- **Session-Invalidierung bei Nutzer-Löschung** funktioniert per `sessions.user_id`-FK + CASCADE (kein Reverse-Lookup vom Hash nötig — user_id ist indiziert). Logout löscht per Hash des präsentierten Cookies.
+- **`user_id` nur aus Session:** In `authMiddleware` gesetzt; `/api/state` liest `req.user.id`, ignoriert jeden client-seitigen `user_id`. Eigener Test: manipulierte `user_id` im Body/Query hat keinen Effekt.
+- **E-Mail-Normalisierung** = eine Funktion `normalizeEmail(lowercase+trim)`, identisch bei `seedAdmin`, Allowlist-Insert (FR-9) und Login-Request-Abgleich (FR-1).
+- **Audit-Log:** append-only, Felder `ts, event, user_id (pseudonym), ip_hash?` — **keine E-Mail/Namen**. Events: login_ok, logout, admin_add/remove, emergency_link, auth_fail. Macht SM-1 (distinct user_id) und SM-3 (auth_fail-Häufung) auswertbar.
+- **Deploy-Guard:** Pipeline/Startup prüft `ADMIN_EMAIL` gesetzt+valide **vor** Live (Fail-Fast in `seedAdmin`, zusätzlich Deploy-Checkliste).
+- **OpenRouter-Key beim Nutzerwechsel:** wird geleert (Kosten-/Secret-Schutz auf geteiltem PC). Bewusste Abwägung gegen Komfort; auf Einzelgeräten neu einzugeben.
+- **Foto-Import-Ambiguität** (zwei ähnliche Namen): bestehende Levenshtein-≤2-Heuristik; bei Mehrdeutigkeit besser als „unbekannt" behandeln (Nutzer entscheidet in der Vorschau) — bestehende Funktion, keine v1-Änderung erzwungen.

@@ -1,6 +1,6 @@
 ---
 title: Dienstplan-Pro
-status: draft
+status: final
 created: 2026-07-07
 updated: 2026-07-07
 ---
@@ -120,6 +120,7 @@ Fällt die Mail-Zustellung aus, kann ein Admin einem freigeschalteten Nutzer ein
 **Consequences (testable):**
 - Ein Admin kann für eine freigeschaltete E-Mail einen einmaligen Login-Link erzeugen/abrufen (übergibt ihn selbst, z.B. per Arbeits-Chat).
 - Der Link unterliegt denselben Regeln wie FR-2 (Bestätigung, Ablauf, Einmaligkeit).
+- Jede Not-Link-Erzeugung wird als Admin-Aktion im Audit-Log verzeichnet (Missbrauchs-Nachvollziehbarkeit, siehe §6.1).
 
 ### 4.2 Nutzer-Datentrennung
 
@@ -128,6 +129,7 @@ Fällt die Mail-Zustellung aus, kann ein Admin einem freigeschalteten Nutzer ein
 #### FR-6: Strikte Datentrennung pro Nutzer
 **Consequences (testable):**
 - `GET/PUT /api/state` betrifft ausschließlich die Dokumente des eingeloggten Nutzers — auch für Admins (Admin ist **kein** Daten-Superuser).
+- Die `user_id` wird **ausschließlich aus dem Session-Kontext** des Servers abgeleitet, **nie** aus dem Client-Payload — Test gegen horizontale Rechteausweitung (manipulierte `user_id` im Request hat keinen Effekt).
 - Zwei verschiedene Nutzer sehen disjunkte Datensätze (stehender 2-Nutzer-Isolationstest, siehe SM-2).
 
 #### FR-7: Übernahme der Alt-Daten (sicher & verifiziert)
@@ -150,7 +152,7 @@ Beim Nutzerwechsel/Erstlogin im selben Browser werden keine Daten vermischt. Rea
 **Description:** Der Admin pflegt die Allowlist in einem nur für ihn sichtbaren Bereich. Realizes UJ-4.
 
 #### FR-9: E-Mail freischalten
-**Consequences (testable):** Nach Freischalten kann diese E-Mail einen Magic-Link erhalten (FR-1); E-Mails normalisiert (lowercase/trim); Duplikate erzeugen keinen zweiten Nutzer.
+**Consequences (testable):** Nach Freischalten kann diese E-Mail einen Magic-Link erhalten (FR-1); E-Mails werden mit **identischer Normalisierung** (lowercase/trim) sowohl beim Speichern als auch beim Allowlist-Abgleich behandelt (case-insensitive, keine Lücke); Duplikate erzeugen keinen zweiten Nutzer.
 
 #### FR-10: Nutzerliste einsehen
 **Consequences (testable):** Liste zeigt alle Nutzer inkl. Admin-Kennzeichnung.
@@ -207,7 +209,7 @@ Beim Nutzerwechsel/Erstlogin im selben Browser werden keine Daten vermischt. Rea
 - Auth-Gate auf `/api/state`; auth-bewusster, offline-fähiger Frontend-Sync; Nutzerwechsel-/Erstlogin-Isolation (inkl. OpenRouter-Key + pending-Schutz).
 - E-Mail-Versand per SMTP (Konsolen-Fallback im Dev/Test).
 - Sicherheits-Härtungen: Token- & Session-Hashing, `foreign_keys`+CASCADE, Rate-Limit (E-Mail primär, IP großzügig), Cookie-Flags, Token in Access-Logs maskiert.
-- **Minimales Audit-Log** (Login/Logout/Admin-Aktionen/401-403-Häufungen, **ohne PII**) — macht die Metriken beobachtbar.
+- **Minimales Audit-Log** (Login/Logout/Admin-Aktionen inkl. Not-Link/401-403-Häufungen) — **ohne PII**, aber mit **stabiler pseudonymer Nutzer-Kennung** (`user_id`, nicht E-Mail), damit SM-1 „≥3 verschiedene Nutzer" zählbar ist.
 - Release-Hygiene: `.env.example`, `README`-Update, `CHANGELOG`, Version-Tag `v1.0.0`, veraltete `CLAUDE.md`-Regeln aktualisieren, alte Test-Artefakte prüfen/aufräumen.
 - **Bericht-Text-Splice-Bug** — eigenes Arbeitspaket mit Akzeptanzkriterium: im Textbericht dürfen Bemerkungs-Zeilen zweier Mitarbeiter nicht mehr ineinanderrutschen (jede Bemerkung dem korrekten Mitarbeiter zugeordnet).
 
