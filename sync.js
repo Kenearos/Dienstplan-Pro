@@ -52,7 +52,8 @@ const DataSync = {
   async boot() {
     let server = null;
     try {
-      const res = await fetch('/api/state', { cache: 'no-store' });
+      const res = await fetch('/api/state', { cache: 'no-store', credentials: 'include' });
+      if (res.status === 401) { if (window.AuthUI) window.AuthUI.showLogin(); this.online = false; return; }
       if (res.ok) server = await res.json();
     } catch { /* offline */ }
 
@@ -78,8 +79,10 @@ const DataSync = {
       const res = await fetch('/api/state', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(this._local()),
       });
+      if (res.status === 401) { if (window.AuthUI) window.AuthUI.showLogin(); this.online = false; return; }
       if (!res.ok) throw new Error('HTTP ' + res.status);
       if (this._dirty === gen) localStorage.removeItem(this.KEY_PENDING); // nur wenn kein neuerer push() lief
       this.online = true;

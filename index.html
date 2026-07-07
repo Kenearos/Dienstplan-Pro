@@ -15,6 +15,17 @@
     </script>
 </head>
 <body>
+    <div id="login-overlay" hidden style="position:fixed;inset:0;z-index:10000;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center">
+        <div style="background:#fff;padding:2rem;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2);max-width:360px;width:90%;text-align:center">
+            <h1 style="font-size:1.4rem;margin:0 0 .5rem">Dienstplan-Pro</h1>
+            <p style="color:#555;font-size:.9rem">Melde dich mit deiner freigeschalteten Arbeits-E-Mail an — wir schicken dir einen Login-Link.</p>
+            <form id="login-form" style="margin-top:1rem;display:flex;flex-direction:column;gap:.75rem">
+                <input type="email" id="login-email" placeholder="E-Mail" required style="padding:.75rem;border:1px solid #ccc;border-radius:8px;font-size:1rem">
+                <button type="submit" class="btn btn-primary">Login-Link anfordern</button>
+            </form>
+            <p id="login-message" hidden style="color:#1e7e34;margin-top:1rem;font-size:.9rem">Prüfe dein Postfach und klicke den Link.</p>
+        </div>
+    </div>
     <div class="container">
         <header>
             <h1>Dienstplan Pro</h1>
@@ -165,6 +176,19 @@
         <div id="tab-settings" class="tab-content">
             <div class="card">
                 <h2>Einstellungen & Daten</h2>
+
+                <div class="settings-section" id="account-section">
+                    <h3>Konto & Team</h3>
+                    <button id="logout-btn" class="btn btn-secondary">Abmelden</button>
+                    <div id="admin-section" hidden style="margin-top:12px">
+                        <h4>Nutzer verwalten (Admin)</h4>
+                        <form id="admin-add-form" style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap">
+                            <input type="email" id="admin-add-email" placeholder="E-Mail freischalten" required style="flex:1;min-width:180px;padding:.5rem;border:1px solid #ccc;border-radius:6px">
+                            <button type="submit" class="btn btn-primary">Freischalten</button>
+                        </form>
+                        <div id="admin-user-list"></div>
+                    </div>
+                </div>
 
                 <div class="settings-section">
                     <h3>Berechnungsregeln (NRW Psychiatrie 2011)</h3>
@@ -327,6 +351,7 @@
     <script src="calculator.js"></script>
     <script src="storage.js"></script>
     <script src="sync.js"></script>
+    <script src="auth-ui.js"></script>
     <script src="app.js"></script>
     <script src="image-import.js"></script>
 </body>

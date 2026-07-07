@@ -1,4 +1,4 @@
-const CACHE_NAME = 'dienstplan-pro-v7';
+const CACHE_NAME = 'dienstplan-pro-v8';
 const ASSETS = [
   './',
   './index.html',
@@ -9,6 +9,7 @@ const ASSETS = [
   './holidays.js',
   './storage.js',
   './sync.js',
+  './auth-ui.js',
   './image-import.js'
 ];
 
