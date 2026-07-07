@@ -35,55 +35,62 @@ function classifyDuties(duties, holidayProvider) {
     return result;
 }
 
-function variant1(classified, isVacation) {
-    const frSoThreshold    = isVacation ? 0.5 : 1;
-    const weekdayThreshold = isVacation ? 1.5 : 3;
-    const frSoDeduction    = isVacation ? 0.5 : 1;
-    const weekdayDeduction = isVacation ? 1.5 : 3;
+// The three variants differ only in threshold, eligibility and deduction.
+// The empty-result shape, the paid-shares/bonus math and the priority-order
+// deduction loop are shared below.
 
-    const frSoPool = classified.fr + classified.so;
-    const eligible = (frSoPool >= frSoThreshold - 1e-9)
-                  && (classified.weekday >= weekdayThreshold - 1e-9);
+function ineligibleResult(variantId, threshold) {
+    return {
+        variantId,
+        eligible: false,
+        threshold,
+        deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
+        paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
+        bonus: 0
+    };
+}
 
-    if (!eligible) {
-        return {
-            variantId: 1,
-            eligible: false,
-            threshold: { frSo: frSoThreshold, weekday: weekdayThreshold },
-            deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            bonus: 0
-        };
-    }
+// paidShares = classified minus deduction per slot. Never-deducted slots have
+// deduction 0, so max(0, x - 0) === x. Weekend slots pay RATE_WEEKEND.
+function payResult(variantId, threshold, classified, deduction) {
+    const paidShares = {
+        fr:      Math.max(0, classified.fr      - deduction.fr),
+        sa:      Math.max(0, classified.sa      - deduction.sa),
+        so:      Math.max(0, classified.so      - deduction.so),
+        weekday: Math.max(0, classified.weekday - deduction.weekday)
+    };
+    const bonus = (paidShares.fr + paidShares.sa + paidShares.so) * RATE_WEEKEND
+                + paidShares.weekday * RATE_NORMAL;
+    return { variantId, eligible: true, threshold, deduction, paidShares, bonus };
+}
 
-    // Friday priority within fr+so pool: fr first, then so
-    let remaining = frSoDeduction;
-    const deduction = { fr: 0, sa: 0, so: 0, weekday: weekdayDeduction };
-    for (const slot of ['fr', 'so']) {
+// Deduct `amount` across `order` slots (Friday-priority), writing into deduction.
+function deductInOrder(classified, order, amount, deduction) {
+    let remaining = amount;
+    for (const slot of order) {
         const take = Math.min(remaining, classified[slot]);
         deduction[slot] = take;
         remaining -= take;
         if (remaining <= 1e-9) break;
     }
+}
 
-    const paidShares = {
-        fr:      Math.max(0, classified.fr      - deduction.fr),
-        sa:      classified.sa, // sa never deducted in V1
-        so:      Math.max(0, classified.so      - deduction.so),
-        weekday: Math.max(0, classified.weekday - deduction.weekday)
-    };
+function variant1(classified, isVacation) {
+    const frSoThreshold    = isVacation ? 0.5 : 1;
+    const weekdayThreshold = isVacation ? 1.5 : 3;
+    const frSoDeduction    = isVacation ? 0.5 : 1;
+    const weekdayDeduction = isVacation ? 1.5 : 3;
+    const threshold = { frSo: frSoThreshold, weekday: weekdayThreshold };
 
-    const bonus = (paidShares.fr + paidShares.sa + paidShares.so) * RATE_WEEKEND
-                + paidShares.weekday * RATE_NORMAL;
+    const frSoPool = classified.fr + classified.so;
+    const eligible = (frSoPool >= frSoThreshold - 1e-9)
+                  && (classified.weekday >= weekdayThreshold - 1e-9);
+    if (!eligible) return ineligibleResult(1, threshold);
 
-    return {
-        variantId: 1,
-        eligible: true,
-        threshold: { frSo: frSoThreshold, weekday: weekdayThreshold },
-        deduction,
-        paidShares,
-        bonus
-    };
+    // Friday priority within fr+so pool: fr first, then so. sa never deducted.
+    const deduction = { fr: 0, sa: 0, so: 0, weekday: weekdayDeduction };
+    deductInOrder(classified, ['fr', 'so'], frSoDeduction, deduction);
+    return payResult(1, threshold, classified, deduction);
 }
 
 function variant2(classified, isVacation) {
@@ -91,89 +98,30 @@ function variant2(classified, isVacation) {
     const weekdayThreshold = isVacation ? 1   : 2;
     const saDeduction      = isVacation ? 0.5 : 1;
     const weekdayDeduction = isVacation ? 1   : 2;
+    const threshold = { sa: saThreshold, weekday: weekdayThreshold };
 
     const eligible = (classified.sa >= saThreshold - 1e-9)
                   && (classified.weekday >= weekdayThreshold - 1e-9);
+    if (!eligible) return ineligibleResult(2, threshold);
 
-    if (!eligible) {
-        return {
-            variantId: 2,
-            eligible: false,
-            threshold: { sa: saThreshold, weekday: weekdayThreshold },
-            deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            bonus: 0
-        };
-    }
-
+    // fr and so never deducted in V2.
     const deduction = { fr: 0, sa: saDeduction, so: 0, weekday: weekdayDeduction };
-
-    const paidShares = {
-        fr:      classified.fr, // fr never deducted in V2
-        sa:      Math.max(0, classified.sa      - deduction.sa),
-        so:      classified.so, // so never deducted in V2
-        weekday: Math.max(0, classified.weekday - deduction.weekday)
-    };
-
-    const bonus = (paidShares.fr + paidShares.sa + paidShares.so) * RATE_WEEKEND
-                + paidShares.weekday * RATE_NORMAL;
-
-    return {
-        variantId: 2,
-        eligible: true,
-        threshold: { sa: saThreshold, weekday: weekdayThreshold },
-        deduction,
-        paidShares,
-        bonus
-    };
+    return payResult(2, threshold, classified, deduction);
 }
 
 function variant3(classified, isVacation) {
-    const poolThreshold = isVacation ? 1 : 2;
+    const poolThreshold  = isVacation ? 1 : 2;
     const totalDeduction = isVacation ? 1 : 2;
+    const threshold = { pool: poolThreshold };
 
     const pool = classified.fr + classified.sa + classified.so;
     const eligible = pool >= poolThreshold - 1e-9;
+    if (!eligible) return ineligibleResult(3, threshold);
 
-    if (!eligible) {
-        return {
-            variantId: 3,
-            eligible: false,
-            threshold: { pool: poolThreshold },
-            deduction: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            paidShares: { fr: 0, sa: 0, so: 0, weekday: 0 },
-            bonus: 0
-        };
-    }
-
-    // Friday priority: fr -> so -> sa
-    let remaining = totalDeduction;
+    // Friday priority: fr -> so -> sa. weekday never deducted.
     const deduction = { fr: 0, sa: 0, so: 0, weekday: 0 };
-    for (const slot of ['fr', 'so', 'sa']) {
-        const take = Math.min(remaining, classified[slot]);
-        deduction[slot] = take;
-        remaining -= take;
-        if (remaining <= 1e-9) break;
-    }
-
-    const paidShares = {
-        fr:      Math.max(0, classified.fr      - deduction.fr),
-        sa:      Math.max(0, classified.sa      - deduction.sa),
-        so:      Math.max(0, classified.so      - deduction.so),
-        weekday: classified.weekday // weekday never deducted in V3
-    };
-
-    const bonus = (paidShares.fr + paidShares.sa + paidShares.so) * RATE_WEEKEND
-                + paidShares.weekday * RATE_NORMAL;
-
-    return {
-        variantId: 3,
-        eligible: true,
-        threshold: { pool: poolThreshold },
-        deduction,
-        paidShares,
-        bonus
-    };
+    deductInOrder(classified, ['fr', 'so', 'sa'], totalDeduction, deduction);
+    return payResult(3, threshold, classified, deduction);
 }
 
 // Expose globally
