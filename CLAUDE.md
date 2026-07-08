@@ -224,13 +224,23 @@ ssh root@65.21.60.83
 cd /root/Dienstplan-Pro
 git pull
 docker build -t dienstplan-pro:latest .
+
+# v1.0+: DB vor dem (ersten) Multi-User-Start sichern — der erste Start migriert das
+# documents-Schema auf (user_id,key) und ordnet ALLE Alt-Daten dem ADMIN_EMAIL zu (einmalig, unumkehrbar).
+docker exec dienstplan-pro sh -c 'cp /data/dienstplan.db /data/dienstplan.db.$(date +%F).bak' || true
+
 docker stop dienstplan-pro && docker rm dienstplan-pro
 docker run -d --name dienstplan-pro --network matrix_default \
     --restart unless-stopped -e PORT=3000 -e DATA_DIR=/data \
+    -e ADMIN_EMAIL=kenearos@mastersofdungeons.de \
+    -e APP_BASE_URL=https://bonus.pixel-by-design.de \
     -v dienstplan-data:/data dienstplan-pro:latest
+# Für Team-Mailversand zusätzlich (sonst erscheint der Magic-Link nur im Container-Log,
+# abrufbar via `docker logs dienstplan-pro`):
+#   -e SMTP_HOST=... -e SMTP_PORT=587 -e SMTP_SECURE=false -e SMTP_USER=... -e SMTP_PASS=... -e SMTP_FROM="Dienstplan-Pro <...>"
 ```
 
-Caddy reloads not needed unless the Caddyfile changes.
+**Wichtig:** `ADMIN_EMAIL` ist Pflicht (Fail-Fast — Container startet sonst nicht) und beim ersten Start unveränderlich (ordnet die Alt-Daten zu). Alle Env-Variablen: siehe `.env.example`. Caddy braucht kein `basic_auth` mehr — die App gate-t sich selbst per Magic-Link.
 
 ## Code Conventions
 
