@@ -1,0 +1,19 @@
+# Was NICHT in den Wissensgraphen gehoert.
+#
+# Gemessen am 2026-08-08: ohne diese Regeln stellten die Werkzeug-Bibliotheken
+# den Graphen fast allein — _bmad 7588 Treffer, .claude/skills 4693, waehrend
+# der eigentliche Servercode auf 722 kam. Code-Fragen lieferten daraufhin
+# ADR-Vorlagen und BMAD-Schrittanleitungen statt duties.js.
+#
+# Das sind fremde Werkzeuge, kein Projektwissen. Sie bleiben im Repo, aber
+# nicht im Graphen.
+
+.claude/
+_bmad/
+_bmad-output/
+.superpowers/
+.standards/
+
+# Generierte Berichte und Snapshots — der Graph soll sich nicht selbst indexieren
+graphify-out/
+.planning/graphs/
