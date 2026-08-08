@@ -6,6 +6,53 @@ Eine Verwerfung braucht Evidenz — Code-Zitat, Testlauf oder Repro-Versuch.
 Laufende Arbeit mit eigenem Ledger: [UI-Redesign „Kamigawa"](docs/REDESIGN-KAMIGAWA-LEDGER.md)
 (Branch `redesign/kamigawa-ui`).
 
+## Release: v1.0 + Kamigawa-UI auf Hetzner deployt (2026-08-08)
+
+**Ausgangslage — vorher gemessen, nicht angenommen:** Der Live-Container lief auf Commit
+`fc8d6dd`, also dem Stand **vor** dem Team-Release; sein `server/`-Verzeichnis enthielt
+weder `auth.js` noch `mailer.js`. Gleichzeitig stand im Caddyfile für
+`bonus.pixel-by-design.de` **kein `basic_auth` mehr**, nur `reverse_proxy`. Folge, live
+belegt: `GET https://bonus.pixel-by-design.de/api/state` lieferte **HTTP 200** mit allen
+acht Klarnamen und ihren Dienstplänen — ohne jede Anmeldung. Der Riegel war offenbar in
+Erwartung des Magic-Link-Releases entfernt worden, das nie ausgerollt wurde.
+
+**Benutzer-Entscheide (vorgelegt, nicht geraten):** sofort deployen und den Mailversand
+nachziehen (statt erst SMTP oder erst einen Caddy-Notriegel); `ADMIN_EMAIL` =
+`kenearos@mastersofdungeons.de`.
+
+**Ablauf:** Prozedur aus CLAUDE.md, in zwei Etappen gefahren — erst alles ohne Ausfall
+(Rollback-Anker, Backup, `git pull`, `docker build`), dann der Umschaltmoment.
+
+| Schritt | Ergebnis |
+|---|---|
+| Rollback-Anker | altes Image als `dienstplan-pro:pre-v1.0` getaggt (`a5048e6058f9`) — **Ergänzung zur dokumentierten Prozedur**: `docker build -t …:latest` überschreibt den Tag, ohne diesen Schritt gäbe es keinen Weg zurück |
+| DB-Backup | alle **drei** Dateien nach `/data/backups/vor-v1.0-2026-08-08-110238.*`. Die `.db` allein hätte den Großteil verfehlt: 4096 B gegenüber **86552 B im WAL**. Tägliche Backups liefen unabhängig bis 10:40 |
+| Pull + Build | `fc8d6dd..393a5a2`, neues Image `3c29db8156c0` |
+| Umschalten | `docker stop/rm`, neuer Container mit `ADMIN_EMAIL`, `APP_BASE_URL`, Volume `dienstplan-data`, Netz `matrix_default`, `--restart unless-stopped`. Automatischer Rückfall auf `pre-v1.0` war eingebaut, wurde **nicht** gebraucht — Start im ersten Versuch, Log `Dienstplan-Pro auf :3000` ohne Fail-Fast |
+
+**Einmalige, unumkehrbare Migration — Ergebnis verifiziert:** `documents` auf `(user_id,key)`
+umgestellt, Altdaten dem Admin zugeordnet. Nachgesehen statt geglaubt: `users` = genau eine
+Zeile (`id 1`, `kenearos@mastersofdungeons.de`, `is_admin 1`); `documents` = `employees`
+(82 B), `duties` (**1398 B**), `vacation` (2 B), alle auf `user_id 1`. Nichts verloren.
+
+**Verifikation nach dem Deploy (von außen, echte Domain):**
+
+| Prüfung | Ergebnis |
+|---|---|
+| `GET /api/state` | **HTTP 401** `{"error":"nicht angemeldet"}` — die Lücke ist zu |
+| Ausgeliefertes HTML | `login-overlay`, `kamigawa.css`, `theme-toggle.js`, `<nav class="tabs">` alle vorhanden |
+| Service Worker | `dienstplan-pro-v9`; zusammen mit `skipWaiting` ziehen offene Clients sofort nach |
+| Neue Assets | `kamigawa.css`, `theme-toggle.js`, `styles.css` → je HTTP 200 |
+| Login-Flow | `POST /api/auth/request` → `{"ok":true}`, Magic-Link erscheint im Container-Log |
+
+**Offen (blockiert das Team):** kein SMTP hinterlegt — weder `.env` noch Env-Variablen am
+Container. Magic-Links landen nur in `docker logs`, der Admin kommt darüber rein, das Team
+nicht. Nachrüsten ist ein reiner Container-Neustart mit fünf zusätzlichen `-e`-Variablen:
+**kein Rebuild, keine weitere Migration**.
+
+**Empfehlung für CLAUDE.md:** das Wegtaggen des alten Images vor dem Build in die
+Deploy-Prozedur aufnehmen — es fehlt dort und ist der einzige Rollback-Pfad.
+
 ## Methoden-Setup auf ai-dev-method v1.15 gezogen (2026-08-08)
 
 **Was/Warum:** Der Redesign-Plan stammt vom 2026-07-10 und lief noch nach dem damaligen
