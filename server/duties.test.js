@@ -45,3 +45,90 @@ test('Schema: ein gueltiger Dienst pro Person und Tag, abgelehnte zaehlen nicht'
     db.prepare('SELECT COUNT(*) c FROM duties WHERE user_id=? AND date=?').get(uid, '2026-09-01').c, 2,
   );
 });
+
+// ── Task 2: Regel-Schicht ────────────────────────────────────────────
+const D = require('./duties');
+
+function neuerNutzer(email, name) {
+  return Number(db.prepare('INSERT INTO users (email,is_admin,created_at,display_name) VALUES (?,0,?,?)')
+    .run(email, new Date().toISOString(), name).lastInsertRowid);
+}
+
+test('anlegen: gueltige Werte, Status pending', () => {
+  const uid = neuerNutzer('a1@x.de', 'Alsholi');
+  const { id } = D.anlegen({ userId: uid, date: '2026-10-05', share: 1.0 });
+  const row = db.prepare('SELECT * FROM duties WHERE id=?').get(id);
+  assert.strictEqual(row.status, 'pending');
+  assert.strictEqual(row.share, 1);
+  assert.strictEqual(row.user_id, uid);
+});
+
+test('anlegen: ungueltiger Anteil und ungueltiges Datum werden abgewiesen', () => {
+  const uid = neuerNutzer('a2@x.de', 'Cabrera');
+  for (const share of [0, 0.7, 2, -1, null]) {
+    assert.throws(() => D.anlegen({ userId: uid, date: '2026-10-06', share }), /UNGUELTIG/);
+  }
+  for (const date of ['2026-13-01', '2026-02-30', '05.10.2026', '2026-10-5', '', null]) {
+    assert.throws(() => D.anlegen({ userId: uid, date, share: 1.0 }), /UNGUELTIG/);
+  }
+});
+
+test('anlegen: zweiter Dienst am selben Tag -> DOPPELT', () => {
+  const uid = neuerNutzer('a3@x.de', 'Gaxhja');
+  D.anlegen({ userId: uid, date: '2026-10-07', share: 1.0 });
+  assert.throws(() => D.anlegen({ userId: uid, date: '2026-10-07', share: 0.5 }), /DOPPELT/);
+});
+
+test('loeschen: nur eigene und nur solange pending', () => {
+  const uid = neuerNutzer('a4@x.de', 'Giurgiu');
+  const fremd = neuerNutzer('a5@x.de', 'Jizdan');
+  const { id } = D.anlegen({ userId: uid, date: '2026-10-08', share: 1.0 });
+
+  assert.throws(() => D.loeschen({ userId: fremd, id }), /NICHT_GEFUNDEN/);
+  assert.strictEqual(D.loeschen({ userId: uid, id }), true);
+
+  const { id: id2 } = D.anlegen({ userId: uid, date: '2026-10-09', share: 1.0 });
+  D.entscheiden({ adminId: fremd, id: id2, status: 'approved' });
+  assert.throws(() => D.loeschen({ userId: uid, id: id2 }), /ENTSCHIEDEN/);
+});
+
+test('entscheiden: setzt Status, Entscheider und Zeitpunkt; meldet Selbstentscheidung', () => {
+  const admin = neuerNutzer('adm2@x.de', 'Benadjemia');
+  const { id } = D.anlegen({ userId: admin, date: '2026-10-10', share: 1.0 });
+  const erg = D.entscheiden({ adminId: admin, id, status: 'approved' });
+  assert.strictEqual(erg.selbst, true, 'Entscheidung ueber eigenen Dienst muss erkennbar sein');
+
+  const row = db.prepare('SELECT * FROM duties WHERE id=?').get(id);
+  assert.strictEqual(row.status, 'approved');
+  assert.strictEqual(row.decided_by, admin);
+  assert.ok(row.decided_at, 'decided_at fehlt');
+});
+
+test('entscheiden: nur approved oder rejected, nicht zweimal', () => {
+  const admin = neuerNutzer('adm3@x.de', 'Admin');
+  const uid = neuerNutzer('a6@x.de', 'Elsharawy');
+  const { id } = D.anlegen({ userId: uid, date: '2026-10-11', share: 0.5 });
+  assert.throws(() => D.entscheiden({ adminId: admin, id, status: 'vielleicht' }), /UNGUELTIG/);
+  D.entscheiden({ adminId: admin, id, status: 'rejected', note: 'Tag war besetzt' });
+  assert.throws(() => D.entscheiden({ adminId: admin, id, status: 'approved' }), /ENTSCHIEDEN/);
+});
+
+test('monat: liefert Namen, filtert auf den Monat, enthaelt keinen Betrag', () => {
+  const uid = neuerNutzer('a7@x.de', 'Guenes');
+  D.anlegen({ userId: uid, date: '2026-11-03', share: 1.0 });
+  D.anlegen({ userId: uid, date: '2026-12-03', share: 1.0 });
+  const zeilen = D.monat('2026-11');
+  assert.strictEqual(zeilen.length, 1);
+  assert.strictEqual(zeilen[0].name, 'Guenes');
+  assert.strictEqual(zeilen[0].date, '2026-11-03');
+  const felder = Object.keys(zeilen[0]).join(',');
+  assert.ok(!/bonus|betrag|amount|euro/i.test(felder), `Betragsfeld im Aushang: ${felder}`);
+});
+
+test('monat: Name faellt auf den lokalen Teil der E-Mail zurueck', () => {
+  const id = Number(db.prepare('INSERT INTO users (email,is_admin,created_at) VALUES (?,0,?)')
+    .run('ohnename@x.de', new Date().toISOString()).lastInsertRowid);
+  D.anlegen({ userId: id, date: '2026-11-04', share: 1.0 });
+  const zeile = D.monat('2026-11').find((z) => z.userId === id);
+  assert.strictEqual(zeile.name, 'ohnename');
+});
