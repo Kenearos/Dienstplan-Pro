@@ -46,7 +46,7 @@ die alten Blobs unangetastet liegen bleiben.
 ## Datenmodell
 
 ```sql
-CREATE TABLE duties (
+CREATE TABLE IF NOT EXISTS duties (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   date       TEXT NOT NULL,              -- 'YYYY-MM-DD', reiner Kalendertag
@@ -55,19 +55,36 @@ CREATE TABLE duties (
   note       TEXT,                       -- Begründung bei Ablehnung
   created_at TEXT NOT NULL,
   decided_by INTEGER REFERENCES users(id),
-  decided_at TEXT,
-  UNIQUE (user_id, date)
+  decided_at TEXT
 );
-CREATE INDEX idx_duties_date ON duties(date);
+-- Ein GUELTIGER Dienst pro Person und Tag. Abgelehnte zaehlen NICHT mit,
+-- sonst blockiert eine Ablehnung den Tag fuer immer (Gate-Finding 1).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_duties_person_tag
+  ON duties(user_id, date) WHERE status <> 'rejected';
+CREATE INDEX IF NOT EXISTS idx_duties_date ON duties(date);
 
+-- Spalte nur anlegen, wenn sie fehlt (PRAGMA table_info pruefen) — genau das
+-- Muster, das server/auth.js fuer die Multi-User-Migration schon verwendet.
 ALTER TABLE users ADD COLUMN display_name TEXT;
 
-CREATE TABLE vacation_months (
+CREATE TABLE IF NOT EXISTS vacation_months (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   month   TEXT NOT NULL,                 -- 'YYYY-MM'
   PRIMARY KEY (user_id, month)
 );
 ```
+
+**Partieller Index statt `UNIQUE`-Constraint (Gate-Finding 1, kritisch).** Ein klassisches
+`UNIQUE (user_id, date)` hätte eine Sackgasse erzeugt: Ein abgelehnter Dienst bleibt als
+Zeile stehen (Löschen ist nur im Zustand `pending` erlaubt), und der Kollege könnte für
+denselben Tag **nichts Neues** eintragen — der Constraint schlägt an, obwohl gar kein
+gültiger Dienst existiert. Der partielle Index lässt beliebig viele abgelehnte Zeilen zu
+und schützt trotzdem genau das, was geschützt gehört: einen gültigen Dienst pro Tag.
+
+**`display_name` bleibt technisch NULL-bar** — SQLite kann einer bestehenden Tabelle keine
+`NOT NULL`-Spalte ohne Default hinzufügen. Die Pflicht wird deshalb in der Anwendung
+erzwungen: Der Migrationslauf bricht bei fehlendem Namen ab, und `/api/roster` fällt im
+Notfall auf den lokalen Teil der E-Mail zurück, statt `null` auszuliefern.
 
 ### Begründungen
 
@@ -126,6 +143,20 @@ Session." Sie bleibt in Kraft, bekommt aber eine benannte, begründete Ausnahme:
 3. **Entscheiden:** nur `is_admin`. Jede Entscheidung wird in `audit_log` geschrieben
    (Tabelle existiert), mit entscheidendem Nutzer und Zeitpunkt.
 
+**Wer den Aushang sehen darf (Gate-Finding 2):** jedes angemeldete Konto — und zwar
+deshalb, weil die Kontoliste eine vom Admin gepflegte Allowlist ist (`POST
+/api/admin/users`). Ein Konto zu haben *bedeutet* in diesem System, zum Team zu gehören.
+Es gibt bewusst kein zweites Rollenkonzept neben `is_admin`. Wer jemanden aufnimmt, gibt
+ihm damit den Aushang frei; wer das nicht will, nimmt ihn nicht auf.
+
+**Der Admin entscheidet auch über eigene Dienste (Gate-Finding 6).** Bei acht Personen
+gibt es keinen zweiten Freigeber, und `audit_log` hält jede Entscheidung samt Entscheider
+fest. Das ist eine bewusste Entscheidung, kein Versehen — wer ein Vier-Augen-Prinzip
+will, braucht einen zweiten Admin, und dann fehlt die Regel „nicht über sich selbst".
+
+**`GET /api/roster` filtert** auf `date LIKE '<month>-%'` und liefert nach Tag und Name
+sortiert. Ohne `month`-Parameter antwortet er `400` statt den gesamten Bestand auszugeben.
+
 ## Migration der Bestandsdaten
 
 **Reihenfolge, wichtig:** TP1 **baut** den Migrationslauf, **ausgeführt** wird er erst,
@@ -138,14 +169,44 @@ ein Mensch; ein Server darf sie nicht raten.
 1. Der Admin legt je Kollege ein Konto an (`POST /api/admin/users`, existiert) und trägt
    den Anzeigenamen ein.
 2. Ein **ausdrücklich angestoßener** Migrationslauf verschiebt die Dienste aus dem
-   Blob des Admins auf die Konten: Datum auf `YYYY-MM-DD` gekürzt, `share` übernommen,
-   Status **`approved`** — Altdaten gelten als bereits genehmigt, sonst müsste der Admin
-   26 historische Dienste nachträglich freigeben.
-3. Namen ohne zugeordnetes Konto brechen den Lauf ab und werden gemeldet; es wird nichts
+   Blob des Admins auf die Konten: `share` übernommen, Status **`approved`** — Altdaten
+   gelten als bereits genehmigt, sonst müsste der Admin 26 historische Dienste
+   nachträglich freigeben.
+3. **Der Urlaubsmodus wandert mit (Gate-Finding 4).** Das `vacation`-Dokument enthält die
+   Flags pro Mitarbeiter und Monat; sie werden zu Zeilen in `vacation_months`. Ohne
+   diesen Schritt rechnet TP4 für jeden migrierten Kollegen ohne Urlaubshalbierung —
+   also falsch, und zwar zu seinen Ungunsten.
+4. Namen ohne zugeordnetes Konto brechen den Lauf ab und werden gemeldet; es wird nichts
    halb migriert.
 
+**Datumskonvertierung, ausbuchstabiert (Gate-Finding 9).** Die Altdaten stehen als
+UTC-Zeitstempel (`2026-06-03T10:00:00.000Z`), weil die App lokale Mittagszeit erzeugt und
+`toISOString()` speichert. Maßgeblich ist der **lokale Kalendertag in Europe/Berlin**,
+nicht der UTC-Tag: Es wird nach Europe/Berlin umgerechnet und davon `YYYY-MM-DD`
+genommen. Beim aktuellen Bestand (alle Stempel 10:00/11:00 UTC) liefern beide Wege
+dasselbe Ergebnis — die Regel greift für Grenzfälle nahe Mitternacht, die entstehen
+können, sobald jemand spätabends einträgt. Der Migrationslauf gibt die Zuordnung
+`alt → neu` zeilenweise aus, damit die 26 Fälle einmal von Hand gegengelesen werden können.
+
 **Rückweg:** TP1 fasst die alten Blobs nicht an. Der Lauf ist wiederholbar und
-verwerfbar — `duties` leeren und erneut migrieren.
+verwerfbar — `duties` leeren und erneut migrieren. Das Schema-DDL ist idempotent
+(`IF NOT EXISTS`, Spaltenprüfung per `PRAGMA table_info` wie in `server/auth.js`).
+
+## Übergangszeit: wer ist wann die Wahrheit (Gate-Finding 3 und 11)
+
+Zwischen TP1 und TP3 existieren zwei Datenspeicher nebeneinander. Ohne klare Regel laufen
+sie auseinander — der Admin trägt im alten Formular ein, während die neue Tabelle schon
+Zeilen hat. Deshalb gilt ausdrücklich:
+
+| Zeitraum | Wahrheit | Neue `duties`-Tabelle |
+|---|---|---|
+| TP1 und TP2 | die alten Blobs. Die bestehende Oberfläche arbeitet unverändert weiter | existiert, wird über die neuen Endpunkte befüllt und getestet, aber von **keiner** Oberfläche gelesen |
+| Umstellungspunkt (Ende TP3) | einmaliger Migrationslauf, danach die Tabelle | ab jetzt alleinige Wahrheit |
+| Nach der Umstellung | die Tabelle | die alten Blobs werden **eingefroren** (nicht gelöscht): `PUT /api/state` antwortet `410 Gone` |
+
+Gelöscht werden die Blobs erst nach einer Beobachtungszeit und in einem eigenen,
+ausdrücklichen Schritt — sie sind bis dahin der Rückweg, wenn die Migration etwas
+verschluckt hat. Ein Doppelschreiben in beide Modelle gibt es zu keinem Zeitpunkt.
 
 ## Fehlerfälle
 
@@ -164,12 +225,38 @@ Bordmittel wie in der bestehenden Suite (`node:test`, temporäres `DATA_DIR`, 61
 grün). Neue Fälle, jeder rot vor der Umsetzung:
 
 - Doppelter Tag → `409`; Datensatz bleibt einer
+- **Nach Ablehnung wieder eintragbar**: Eintrag → `rejected` → neuer Eintrag am selben Tag
+  gelingt, und beide Zeilen existieren. Der Fall, der ohne den partiellen Index eine
+  Sackgasse wäre — dieser Test ist der Wächter über Gate-Finding 1
 - `user_id` aus dem Request-Body wird ignoriert (Anti-IDOR, analog zum bestehenden Test)
-- `/api/roster` enthält keine Beträge und keine Urlaubsflags
+- `/api/roster` enthält keine Beträge und keine Urlaubsflags; ohne `month` → `400`
 - Nicht-Admin bekommt `403` auf `/decision`, Admin `200` und ein `audit_log`-Eintrag
 - Löschen nach Freigabe → `409`, vor Freigabe → `200`
-- Migration: Datumskonvertierung, Idempotenz, Abbruch bei fehlender Zuordnung
+- Migration: Datumskonvertierung **inklusive eines Grenzfalls nahe Mitternacht**,
+  Urlaubsflags landen in `vacation_months`, Idempotenz, Abbruch bei fehlender Zuordnung
+- Schema-DDL zweimal ausgeführt → keine Fehler (Idempotenz)
 - Urlaubsmonat halbiert die Schwellen weiterhin (Regressionsfall aus `variants.test.js`)
+
+## Gate 1+2 (2026-08-08)
+
+**Kritiker:** opencode `opencode/mimo-v2.5-free`, 94 s, Exit 0. Gegenstand: diese Spec,
+zum Abgleich `server/db.js`, `server/index.js`, `server/auth.js`, `sync.js`, `variants.js`,
+`calculator.js`, `app.js`. **12 Findings — 7 übernommen, 3 halb, 2 mit Evidenz verworfen.**
+
+| Finding | Urteil | Evidenz / Einarbeitung |
+|---|---|---|
+| [KRITISCH] `UNIQUE` blockiert Wiedereintrag nach Ablehnung | **übernommen** | Echter Konstruktionsfehler: abgelehnte Zeile bleibt, Löschen nur bei `pending` → Tag dauerhaft dicht. Jetzt partieller Index `WHERE status <> 'rejected'` + eigener Testfall |
+| [KRITISCH] Kein Cutover-Punkt zwischen Blob und Tabelle | **übernommen** | Neuer Abschnitt „Übergangszeit": wer wann die Wahrheit ist, kein Doppelschreiben, `410 Gone` nach der Umstellung |
+| [HOCH] Urlaubsdaten werden nicht migriert | **übernommen** | Migrationsschritt 3 ergänzt — sonst rechnet TP4 ohne Urlaubshalbierung, zulasten der Kollegen |
+| [HOCH] DDL nicht idempotent | **übernommen** | `IF NOT EXISTS` + Spaltenprüfung nach dem Muster aus `server/auth.js`, plus Testfall |
+| [MITTEL] `display_name` NULL-bar trotz „Pflicht" | **übernommen** | SQLite kann keine `NOT NULL`-Spalte nachrüsten; Pflicht wird in der Anwendung erzwungen, Rückfall auf den lokalen Teil der E-Mail |
+| [MITTEL] Zeitzonen-Regel der Konvertierung fehlt | **übernommen** | Maßgeblich ist der lokale Kalendertag in Europe/Berlin; beim Bestand identisch, die Regel greift für Grenzfälle nahe Mitternacht |
+| [MITTEL] `roster`-Query nicht spezifiziert | **übernommen** | Filter, Sortierung und `400` ohne `month` festgeschrieben |
+| [KRITISCH] `/api/roster` ohne Berechtigungskontrolle | **halb** | Kein Defekt, sondern die getroffene Entscheidung. Präzisiert: die Allowlist *ist* das Rechtemodell — ein Konto zu haben bedeutet, zum Team zu gehören |
+| [HOCH] Admin gibt eigene Dienste frei | **halb** | Bei acht Personen gibt es keinen zweiten Freigeber; als bewusste Entscheidung dokumentiert, `audit_log` hält jede fest |
+| [MITTEL] Kein Verfallsplan für Altdaten | **halb** | In den Übergangs-Abschnitt aufgenommen: einfrieren statt löschen, Löschung später als eigener Schritt |
+| [HOCH] Kein `updated_at` | **verworfen** | Es gibt keine Änderungsoperation: ein `pending`-Dienst kann nur gelöscht werden, jede Entscheidung trägt `decided_at`. `created_at` + `decided_at` decken den Lebenszyklus vollständig ab |
+| [MITTEL] Keine Paginierung für `/pending` | **verworfen** | Vorratsbau. Real sind es 26 Dienste in zwei Monaten; selbst ein theoretischer Vollmonat aller acht bliebe dreistellig — für SQLite und eine JSON-Antwort belanglos |
 
 ## Offene Annahmen — vor der Umsetzung zu bestätigen
 
