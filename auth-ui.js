@@ -64,7 +64,10 @@ const AuthUI = {
         });
         if (r.ok) { location.reload(); return; }
         const j = await r.json().catch(() => ({}));
-        fehler(j.error || 'Anmeldung fehlgeschlagen.');
+        // Der Server bleibt neutral und sagt nicht, ob es das Konto gibt oder ob
+        // nur das Passwort fehlt. Fuer jemanden, der zum ersten Mal hier ist,
+        // waere das eine Sackgasse — deshalb der Hinweis auf den zweiten Knopf.
+        fehler(`${j.error || 'Anmeldung fehlgeschlagen.'} Zum ersten Mal hier? Dann leg mit dem Knopf darunter dein Passwort fest.`);
       } catch {
         fehler('Keine Verbindung zum Server.');
       }
