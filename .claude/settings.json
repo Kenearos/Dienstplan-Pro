@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-.}\"; g=\"$d/.planning/graphs/graph.json\"; if [ -f \"$g\" ]; then built=$(grep -o '\"built_at_commit\": *\"[a-f0-9]*\"' \"$g\" 2>/dev/null | head -1 | grep -o '[a-f0-9]*\"$' | tr -d '\"'); cur=$(git -C \"$d\" rev-parse HEAD 2>/dev/null); if [ -n \"$built\" ] && [ -n \"$cur\" ]; then case \"$cur\" in \"$built\"*) : ;; *) printf '{\"systemMessage\":\"graphify: Wissensgraph ist STALE (gebaut @%.7s) - Rebuild anstossen.\"}' \"$built\";; esac; fi; fi; true",
+            "timeout": 15,
+            "statusMessage": "Pruefe Graph-Frische..."
+          }
+        ]
+      }
+    ]
+  }
+}
