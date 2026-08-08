@@ -45,8 +45,12 @@ function consumeLoginToken(raw) {
   ).run(now, th, now);
   if (info.changes !== 1) return null;
   const row = db.prepare(
-    'SELECT t.user_id AS userId, u.email, u.is_admin AS isAdmin FROM login_tokens t JOIN users u ON t.user_id = u.id WHERE t.token_hash = ?'
+    // active = 1: ein deaktiviertes Konto bekommt keine Session mehr.
+    'SELECT t.user_id AS userId, u.email, u.is_admin AS isAdmin FROM login_tokens t JOIN users u ON t.user_id = u.id WHERE t.token_hash = ? AND u.active = 1'
   ).get(th);
+  // Kein row = Konto deaktiviert (oder zwischenzeitlich weg). Der Token ist
+  // dann bereits verbraucht — gewollt: er soll kein zweites Mal ziehen.
+  if (!row) return null;
   return { userId: row.userId, email: row.email, isAdmin: !!row.isAdmin };
 }
 

@@ -9,7 +9,7 @@ const { hit } = require('./ratelimit');
 const { sendMagicLink } = require('./mailer');
 const {
   normalizeEmail, hashToken, createLoginToken, consumeLoginToken,
-  createSession, validateSession, deleteSession, SESSION_TTL_DAYS,
+  createSession, validateSession, deleteSession, deleteUserSessions, SESSION_TTL_DAYS,
   seedAdmin, migrateToMultiUser,
 } = require('./auth');
 
@@ -148,8 +148,31 @@ app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) =
   if (target.is_admin && db.prepare('SELECT COUNT(*) c FROM users WHERE is_admin = 1').get().c <= 1) {
     return res.status(400).json({ error: 'Der letzte Admin kann nicht entfernt werden.' });
   }
+  // Dienste sind die Grundlage gezahlter Verguetung. Ein Konto, an dem welche
+  // haengen, darf nicht per Klick verschwinden — dafuer gibt es deactivate.
+  const anzahl = db.prepare('SELECT COUNT(*) c FROM duties WHERE user_id = ?').get(id).c;
+  if (anzahl > 0) {
+    return res.status(409).json({
+      error: 'Dieses Konto hat Dienste und darf nicht gelöscht werden — bitte deaktivieren.',
+    });
+  }
   db.prepare('DELETE FROM users WHERE id = ?').run(id); // CASCADE räumt Sessions/Tokens
   audit('admin_remove', req.user.id, ipHashOf(req));
+  res.json({ ok: true });
+});
+
+// Ausscheiden heisst deaktivieren: Anmeldung gesperrt, Historie bleibt.
+app.post('/api/admin/users/:id/deactivate', authMiddleware, adminMiddleware, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Ungültige ID' });
+  const target = db.prepare('SELECT id, is_admin FROM users WHERE id = ?').get(id);
+  if (!target) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+  if (target.is_admin && db.prepare('SELECT COUNT(*) c FROM users WHERE is_admin = 1 AND active = 1').get().c <= 1) {
+    return res.status(400).json({ error: 'Der letzte aktive Admin kann nicht deaktiviert werden.' });
+  }
+  db.prepare('UPDATE users SET active = 0 WHERE id = ?').run(id);
+  deleteUserSessions(id);
+  audit('admin_deactivate', req.user.id, ipHashOf(req));
   res.json({ ok: true });
 });
 

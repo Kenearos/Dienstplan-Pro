@@ -152,3 +152,38 @@ test('decision ueber eigenen Dienst wird als self_decision geloggt', async () =>
     assert.strictEqual(db.prepare("SELECT COUNT(*) c FROM audit_log WHERE event='self_decision'").get().c, 1);
   });
 });
+
+// ── Task 4: Ausscheiden statt Loeschen ───────────────────────────────
+
+test('Konto mit Diensten laesst sich nicht loeschen, nur deaktivieren', async () => {
+  const admin = seedUser('r12@x.de', 1, 'Chef');
+  const geht = seedUser('r13@x.de', 0, 'Scheidet');
+  await withServer(async (port) => {
+    const ca = await anmelden(port, admin);
+    const cg = await anmelden(port, geht);
+    const r0 = await req(port, '/api/duties', mit(cg, { method: 'POST', ...json({ date: '2027-07-01', share: 1 }) }));
+    const { id } = await r0.json();
+    await req(port, `/api/duties/${id}/decision`, mit(ca, { method: 'POST', ...json({ status: 'approved' }) }));
+
+    // Loeschen wuerde die Grundlage gezahlter Verguetung vernichten
+    let r = await req(port, `/api/admin/users/${geht}`, mit(ca, { method: 'DELETE' }));
+    assert.strictEqual(r.status, 409);
+    assert.strictEqual(db.prepare('SELECT COUNT(*) c FROM duties WHERE user_id=?').get(geht).c, 1,
+      'Dienste duerfen nicht verschwunden sein');
+
+    r = await req(port, `/api/admin/users/${geht}/deactivate`, mit(ca, { method: 'POST' }));
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(db.prepare('SELECT active FROM users WHERE id=?').get(geht).active, 0);
+    assert.strictEqual(db.prepare('SELECT COUNT(*) c FROM duties WHERE user_id=?').get(geht).c, 1);
+  });
+});
+
+test('deaktiviertes Konto kann sich nicht mehr anmelden', async () => {
+  const uid = seedUser('r14@x.de', 0, 'Weg');
+  db.prepare('UPDATE users SET active=0 WHERE id=?').run(uid);
+  await withServer(async (port) => {
+    const raw = createLoginToken(uid);
+    const r = await req(port, '/auth/confirm', { method: 'POST', ...form(`token=${raw}`) });
+    assert.strictEqual(r.status, 400);
+  });
+});
