@@ -1,8 +1,10 @@
-const CACHE_NAME = 'dienstplan-pro-v8';
+const CACHE_NAME = 'dienstplan-pro-v9';
 const ASSETS = [
   './',
   './index.html',
+  './kamigawa.css',
   './styles.css',
+  './theme-toggle.js',
   './app.js',
   './calculator.js',
   './variants.js',

@@ -146,10 +146,10 @@ anhalten und fragen, nie stillschweigend überspringen. Jedes Finding selbst ver
 
 - [x] **Gate 1+2 (dieses Ledger als Planungsartefakt) — bestanden am 2026-08-08**, Findings
       eingearbeitet (Protokoll unten)
-- [ ] Implementierung (eine Story: „Kamigawa-Shell + Re-Skin")
-- [ ] Story-/Security-Review (styles.css, index.html, sw.js — kombiniert, da reine Optik)
-- [ ] Echte Verifikation **A1–A9** (Browser, Screenshots)
-- [ ] Commit
+- [x] **Implementierung** (eine Story: „Kamigawa-Shell + Re-Skin") — 2026-08-08
+- [x] **Story-Review + Gate 3** (kombiniert, da reine Optik) — 2026-08-08, Protokoll unten
+- [x] **Echte Verifikation A1–A9** im Browser (Playwright, echter Server mit Magic-Link-Login)
+- [x] **Commit** (ein Commit für die Story, inkl. dieses Ledgers)
 - [ ] graphify-Rebuild nach dem Commit-Block — **blockiert**, solange kein Backend
       erreichbar ist (Projekt-LEDGER.md, „Offene Punkte")
 
@@ -204,3 +204,71 @@ Inventar notiert, die Kanagawa-Palette behebt ihn ohnehin.
 **Selbst gefunden bei der Verifikation (nicht vom Kritiker):** der Kontrast-Bug im
 E-Mail-Report-Modal → **A9**. Aufgefallen beim Nachprüfen des verworfenen Findings oben —
 der Kritiker zeigte in die richtige Gegend, aber auf das falsche Element.
+
+## Story „Kamigawa-Shell + Re-Skin" (2026-08-08)
+
+**Umgesetzt:** `kamigawa.css` + `theme-toggle.js` byte-identisch aus
+`G:\Claude\MTG-Spekulation\src\ui\static\` übernommen (SHA256 verglichen) · `styles.css`
+komplett neu auf `--kng-*` · `index.html` Shell-Umbau (Grid: Sidebar-Spalte ab 900px,
+fixe Bottom-Tabbar darunter; `<nav>`; Login-Overlay und Admin-Form ohne Inline-Styles;
+Head-Bootstrap gegen den Farb-Flash) · `sw.js` v8→v9 plus beide neuen Assets ·
+`manifest.json` auf die Kanagawa-Dark-Werte.
+
+**Nicht gebaut, bewusst:** kein roter Test (nicht testbares Artefakt — die Methode ersetzt
+ihn durch A1–A9). Tote Regeln `result-summary/-item/-label/-value` ersatzlos entfernt:
+`grep` über alle `.js`/`.html` findet keinen Erzeuger mehr.
+
+### Verifikation A1–A9 (echter Server auf :3456, Magic-Link-Login als Admin, Playwright)
+
+| Kriterium | Ergebnis | Beleg |
+|---|---|---|
+| A1 Navigation | **PASS** | Sidebar 264px links (x=565, Inhalt x=829); Umschalten über `.active` funktioniert, `app.js` unverändert |
+| A2 Kern-Flow | **PASS** | Mitarbeiter anlegen → 4 Dienste (Fr/Sa/So/Di) → Berechnung: 3 Variantenkarten, Gewinner mit Glow, **700,00 €** — rechnerisch korrekt (V3: Abzug fr+so, sa 450 + Werktag 250) |
+| A3 Theme | **PASS** | Zyklus light→neon→dark→light, Icons ☾/✦/☀, `localStorage` persistiert, nach Reload `dark`; `meta[theme-color]` folgt dem Token (`#F2ECBC`/`#0A0E1A`/`#16161D`); Flash verhindert durch Head-Bootstrap |
+| A4 Suite | **PASS** | `npm test`: **61/61** grün, vor und nach allen Änderungen |
+| A5 Overlays | **PASS** | Login-Overlay z-index 10000, Import-Modal 1500, Backdrop `--kng-overlay`, Stufe 1 bedienbar |
+| A6 Responsiv | **PASS** (nach Fix) | 360/768/899/900/1200 ohne H-Scroll; Umschaltpunkt exakt: 899 = Tabbar, 900 = Sidebar; Fokusring 2px `--kng-border-strong`; `prefers-reduced-motion`-Regel geparst |
+| A7 Keine Hartwerte | **PASS** | `grep -iE '#[0-9a-f]{3,8}' styles.css index.html` → leer |
+| A8 Druck | **statisch verifiziert** | Print-Regeln geparst (`:root{color-scheme:light}`, `*{color:CanvasText!important}`, `.tabs,.sidebar-footer,.btn,… {display:none}`, `.tab-content{display:block!important}`). **Offen:** eine echte Druckvorschau ließ sich headless nicht auslösen — visuelle Prüfung steht aus |
+| A9 Report-Kontrast | **PASS** (nach Fix) | schwarz auf weiß in **dark und light** (`rgb(0,0,0)`), via `color-scheme: light` + `CanvasText` |
+
+**Eigene Vollständigkeitsprüfung:** 92 aus JS/HTML erzeugte Klassen gegen `styles.css`
+abgeglichen — jede hat eine Regel. Die 7 Ausreißer waren erklärbar: 5 gehören zum
+Druck-Report mit eigenem Inline-CSS (außer Scope), 2 sind Regex-Artefakte.
+
+### Drei echte Defekte, gefunden **durch** die Verifikation
+
+1. **Eigener Fehler:** beim Einfügen der A9-Regel blieb ein Kommentar offen (`*/` doppelt) —
+   der CSS-Parser verwarf daraufhin die `#report-content`-Regel stillschweigend. Erst die
+   Messung im Browser (heller Text auf weiß) brachte es ans Licht, kein Werkzeug meldete es.
+   Seitdem zusätzlich eine statische Klammer-/Kommentar-Balance-Prüfung.
+2. **A6-Überlauf bei 360px:** `auth-ui.js:80` setzt inline `display:flex` **ohne**
+   `flex-wrap`; E-Mail (210px) + Button (112px) passten nicht in 279px → 10px H-Scroll.
+   Behoben per `flex-wrap`/`overflow-wrap` in `.admin-user-row` — beide stehen **nicht** im
+   Inline-Style, greifen also, ohne `auth-ui.js` anzufassen. Trat nur als Admin auf.
+3. **Regression durch die neue Tabbar:** `sync.js:102` positioniert `#sync-status` inline auf
+   `bottom:8px` mit `z-index:9999` — die Pille lag damit über der Bottom-Tabbar und verdeckte
+   Bedienelemente (gemessen: 745–772 vs. Tabbar ab 723). Behoben mit
+   `#sync-status { bottom: 76px !important }` **nur im Mobile-Block**; die Farbe bleibt bei
+   `sync.js`, weil sie online/offline signalisiert.
+
+### Story-Review + Gate 3 (kombiniert, 2026-08-08)
+
+**Kritiker:** opencode `opencode/mimo-v2.5-free`, 134 s, Exit 0. Gegenstand: `styles.css`,
+`index.html`, `sw.js`, `manifest.json` (der Kritiker las zusätzlich die unveränderten
+JS-Dateien zum Abgleich). **10 Findings — 2 übernommen, 2 mit Messung widerlegt, 2 als
+dokumentierte Grenze übernommen, 4 vom Kritiker selbst als „kein Bug" markiert.**
+
+| Finding | Urteil | Evidenz |
+|---|---|---|
+| [HOCH] Neon-Flash: der Head-Bootstrap kenne nur dark/light | **widerlegt** | Empirisch: `kng_theme='neon'` + Reload → `data-theme="neon"`, Body-BG `rgb(10,14,26)`. Der Bootstrap übernimmt den gespeicherten Wert unverändert; der Fallback greift nur bei leerem Wert |
+| [MITTEL] `#sync-status{bottom:76px!important}` gelte auch auf Desktop | **widerlegt** | CSSOM: die Regel existiert **nur** in `@media (max-width: 899px)`, keine globale Regel; Desktop misst weiterhin `bottom: 8px` |
+| [MITTEL] Login-Overlay ohne `role="dialog"` | **übernommen** | `role="dialog" aria-modal="true" aria-labelledby` ergänzt (Fokus-Trap bräuchte JS → außer Scope) |
+| [NIEDRIG] Theme-Button mit statischem `aria-label` | **übernommen** | Label folgt jetzt dem Zustand: „Design wechseln (aktuell: Neon)" → „… (aktuell: Dunkel)", verifiziert |
+| [HOCH] Hartwerte in `manifest.json` | **Grenze dokumentiert** | Korrekt beobachtet, aber unlösbar: das Manifest-Format kennt keine Variablen. Folge: der PWA-Splash ist immer dunkel, auch für Light-/Neon-Nutzer |
+| [MITTEL] `border-bottom:#eee` aus `auth-ui.js` passt in keinem Theme | **Grenze dokumentiert** | Stimmt, liegt aber im Inline-`cssText` einer tabuisierten Datei |
+| 4 × „kein Bug" (Grid/Print, Neon-Fallback, `position:relative`, Print-Umfang) | **kein Handlungsbedarf** | Vom Kritiker selbst so eingeordnet |
+
+**Vom Kritiker bestätigt:** z-index-Ordnung (Overlay 10000 > Modal 1500 > Toast 1000 >
+Tabbar 900), der Tab-Umschaltvertrag wörtlich eingehalten, Cacheliste vollständig, keine
+neuen externen Ressourcen, kein Datenabfluss.

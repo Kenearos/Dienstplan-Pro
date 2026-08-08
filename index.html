@@ -5,8 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dienstplan Pro</title>
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0f172a">
+    <!-- Wert wird unten aus --kng-bg gesetzt, damit hier kein Farbwert haengt -->
+    <meta name="theme-color" content="">
+    <link rel="stylesheet" href="kamigawa.css">
     <link rel="stylesheet" href="styles.css">
+    <script>
+      // Theme VOR dem ersten Paint setzen: theme-toggle.js initialisiert sich
+      // erst bei DOMContentLoaded, das gaebe sonst einen sichtbaren Farb-Flash.
+      // Gleiche Quelle und gleiche Reihenfolge wie KngTheme (localStorage > System).
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem('kng_theme'); } catch (e) { /* privater Modus */ }
+        if (!t) {
+          t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+            ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
     <script>
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js')
@@ -15,15 +31,15 @@
     </script>
 </head>
 <body>
-    <div id="login-overlay" hidden style="position:fixed;inset:0;z-index:10000;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center">
-        <div style="background:#fff;padding:2rem;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.2);max-width:360px;width:90%;text-align:center">
-            <h1 style="font-size:1.4rem;margin:0 0 .5rem">Dienstplan-Pro</h1>
-            <p style="color:#555;font-size:.9rem">Melde dich mit deiner freigeschalteten Arbeits-E-Mail an — wir schicken dir einen Login-Link.</p>
-            <form id="login-form" style="margin-top:1rem;display:flex;flex-direction:column;gap:.75rem">
-                <input type="email" id="login-email" placeholder="E-Mail" required style="padding:.75rem;border:1px solid #ccc;border-radius:8px;font-size:1rem">
+    <div id="login-overlay" role="dialog" aria-modal="true" aria-labelledby="login-titel" hidden>
+        <div class="login-card">
+            <h1 id="login-titel">Dienstplan-Pro</h1>
+            <p>Melde dich mit deiner freigeschalteten Arbeits-E-Mail an — wir schicken dir einen Login-Link.</p>
+            <form id="login-form" class="login-form">
+                <input type="email" id="login-email" placeholder="E-Mail" required>
                 <button type="submit" class="btn btn-primary">Login-Link anfordern</button>
             </form>
-            <p id="login-message" hidden style="color:#1e7e34;margin-top:1rem;font-size:.9rem">Prüfe dein Postfach und klicke den Link.</p>
+            <p id="login-message" hidden>Prüfe dein Postfach und klicke den Link.</p>
         </div>
     </div>
     <div class="container">
@@ -32,12 +48,18 @@
             <p class="subtitle">Bonuszahlungen für Wochenend- und Feiertagsdienste (NRW)</p>
         </header>
 
-        <!-- Navigation Tabs -->
-        <div class="tabs">
+        <!-- Navigation: Sidebar (Desktop) / Bottom-Tabbar (Mobile) -->
+        <nav class="tabs" aria-label="Bereiche">
             <button class="tab-btn active" data-tab="duties">Dienste eintragen</button>
             <button class="tab-btn" data-tab="calculation">Berechnung</button>
             <button class="tab-btn" data-tab="employees">Mitarbeiter verwalten</button>
             <button class="tab-btn" data-tab="settings">Einstellungen</button>
+        </nav>
+
+        <div class="sidebar-footer">
+            <button type="button" class="theme-btn" data-kng-toggle aria-label="Design wechseln">
+                <span data-kng-icon></span>
+            </button>
         </div>
 
         <!-- Tab: Dienste eintragen -->
@@ -180,10 +202,10 @@
                 <div class="settings-section" id="account-section">
                     <h3>Konto & Team</h3>
                     <button id="logout-btn" class="btn btn-secondary">Abmelden</button>
-                    <div id="admin-section" hidden style="margin-top:12px">
+                    <div id="admin-section" class="admin-block" hidden>
                         <h4>Nutzer verwalten (Admin)</h4>
-                        <form id="admin-add-form" style="display:flex;gap:8px;margin:8px 0;flex-wrap:wrap">
-                            <input type="email" id="admin-add-email" placeholder="E-Mail freischalten" required style="flex:1;min-width:180px;padding:.5rem;border:1px solid #ccc;border-radius:6px">
+                        <form id="admin-add-form" class="admin-form">
+                            <input type="email" id="admin-add-email" placeholder="E-Mail freischalten" required>
                             <button type="submit" class="btn btn-primary">Freischalten</button>
                         </form>
                         <div id="admin-user-list"></div>
@@ -236,7 +258,7 @@
                     <h3>Datenexport / Import</h3>
                     <button id="export-csv-btn" class="btn btn-success">📊 Excel/CSV Export</button>
                     <button id="export-report-btn" class="btn btn-primary">📝 PDF-Bericht</button>
-                    <button id="email-report-btn" class="btn" style="background-color: #6f42c1; color: white;">📧 E-Mail Text-Generator</button>
+                    <button id="email-report-btn" class="btn btn-accent">📧 E-Mail Text-Generator</button>
                     <button id="export-btn" class="btn btn-secondary">Daten exportieren (JSON)</button>
                     <p class="text-muted" style="margin-top: 10px;">💡 <strong>Tipp:</strong> CSV-Dateien können direkt mit Excel, LibreOffice oder Google Sheets geöffnet werden. Der Bonus-Bericht öffnet sich in einem neuen Fenster zum Drucken.</p>
                     <div class="form-group">
@@ -346,6 +368,7 @@
     <div id="toast" class="toast"></div>
 
     <!-- Scripts -->
+    <script src="theme-toggle.js"></script>
     <script src="holidays.js"></script>
     <script src="variants.js"></script>
     <script src="calculator.js"></script>
@@ -354,5 +377,25 @@
     <script src="auth-ui.js"></script>
     <script src="app.js"></script>
     <script src="image-import.js"></script>
+    <script>
+      // Farbe der App-Shell (Adressleiste, Splash) dem Theme nachziehen —
+      // der Wert kommt aus dem Token, damit hier kein Farbwert steht.
+      // Dazu das Label des Umschalters: das Icon (Sonne/Mond/Funke) sagt einer
+      // Vorlesehilfe nichts, der aktuelle Zustand gehoert in den Namen.
+      (function () {
+        var meta = document.querySelector('meta[name="theme-color"]');
+        var btn = document.querySelector('[data-kng-toggle]');
+        var NAMEN = { dark: 'Dunkel', light: 'Hell', neon: 'Neon' };
+        function sync() {
+          var c = getComputedStyle(document.documentElement)
+            .getPropertyValue('--kng-bg').trim();
+          if (c) meta.setAttribute('content', c);
+          var t = document.documentElement.getAttribute('data-theme');
+          if (btn) btn.setAttribute('aria-label', 'Design wechseln (aktuell: ' + (NAMEN[t] || t) + ')');
+        }
+        sync();
+        if (window.KngTheme) window.KngTheme.onChange(sync);
+      })();
+    </script>
 </body>
 </html>

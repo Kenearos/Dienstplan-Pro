@@ -1,0 +1,315 @@
+/*
+ * Project theme for MTG-Spekulation — the Kanagawa palette ("my kamigawa style")
+ * driving the NEW dashboard visualization (sidebar, KPI cards, hero, charts,
+ * gallery, mobile tabbar). Only the *visualization* was taken from the redesign
+ * mockups; the colours and typography stay 100% Kanagawa.
+ *
+ * Values are the canonical Kanagawa tokens (github.com/rebelot/kanagawa.nvim, MIT)
+ * mirrored from kanagawa.css / kanagawa-design-system/tokens.json. A few additive
+ * STRUCTURAL tokens the new layout needs (--kng-surface-2, --kng-on-accent,
+ * --kng-art-*, glow, fills) are derived from the same palette — no new hues.
+ * Everything still flows through --kng-* so CLAUDE.md §5 holds: no hardcoded hex
+ * in templates/components. Dark is default; light via [data-theme] / system pref.
+ */
+
+:root {
+  /* ---- Colors (Dark — Kanagawa sumiInk) -------------------------------- */
+  --kng-bg: #16161D;
+  --kng-bg-elevated: #1F1F28;
+  --kng-surface: #2A2A37;
+  --kng-surface-2: #1F1F28;     /* inset wells / gallery bodies (one step down) */
+  --kng-surface-hover: #363646;
+  --kng-border: #363646;        /* visible hairline (sumiInk5) for card edges */
+  --kng-border-strong: #7AA89F;
+
+  --kng-text: #DCD7BA;          /* fujiWhite */
+  --kng-text-secondary: #C8C093;/* oldWhite */
+  --kng-text-muted: #969585;    /* fujiGray (AA-lifted) */
+  --kng-text-faint: #969585;    /* = muted so table TH / axis stay AA */
+
+  /* Primary action/highlight = waveAqua teal (as the original app.css used). */
+  --kng-accent: #FFA066;        /* surimiOrange — highlights / experimental pill */
+  --kng-cyan: #7AA89F;          /* waveAqua2 — primary buttons, score bars, nav */
+  --kng-cyan-bright: #8EC0B5;   /* hover (slightly lighter teal) */
+  --kng-cyan-deep: #5E8079;     /* brand-mark gradient end */
+  --kng-teal: #7AA89F;
+  --kng-blue: #7E9CD8;          /* crystalBlue — links/info */
+
+  --kng-magenta: #D27E99;       /* sakuraPink — forecast / prediction lines */
+  --kng-purple: #957FB8;        /* oniViolet */
+  --kng-violet: #957FB8;        /* catalyst badge text */
+  --kng-pink: #D27E99;
+
+  --kng-gold: #DCA561;          /* autumnYellow — dividers, foil badges */
+  --kng-yellow: #DCA561;
+  --kng-warning: #FF9E3B;       /* roninYellow */
+
+  --kng-success: #98BB6C;       /* springGreen — up */
+  --kng-error: #FF5D62;         /* peachRed — down */
+  --kng-error-subtle: #E46876;  /* waveRed */
+
+  /* Ink ON solid accent/gold fills (teal & gold are light in dark theme → dark ink). */
+  --kng-on-accent: #16161D;
+  --kng-on-gold: #16161D;
+
+  /* ---- Card-art mana frames (muted Kanagawa-toned; start → surface-2) --- */
+  --kng-art-azure: #2E3B57;
+  --kng-art-jade: #2C4A40;
+  --kng-art-crimson: #4A2E38;
+  --kng-art-violet: #3A3350;
+
+  /* ---- Spacing ---------------------------------------------------------- */
+  --kng-space-xs: 0.25rem;
+  --kng-space-sm: 0.5rem;
+  --kng-space-md: 1rem;
+  --kng-space-lg: 1.5rem;
+  --kng-space-xl: 2rem;
+  --kng-space-2xl: 3rem;
+
+  /* ---- Border Radius --------------------------------------------------- */
+  --kng-radius-sm: 4px;
+  --kng-radius-md: 6px;
+  --kng-radius-lg: 8px;
+  --kng-radius-xl: 12px;
+  --kng-radius-2xl: 14px;
+  --kng-radius-full: 9999px;
+
+  /* ---- Typography (Kanagawa: Inter + JetBrains Mono — no display serif) - */
+  --kng-font-sans: Inter, system-ui, -apple-system, sans-serif;
+  --kng-font-display: var(--kng-font-sans);
+  --kng-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --kng-text-xs: 0.75rem;
+  --kng-text-sm: 0.875rem;
+  --kng-text-base: 1rem;
+  --kng-text-lg: 1.125rem;
+  --kng-text-xl: 1.25rem;
+  --kng-text-2xl: 1.5rem;
+  --kng-text-3xl: 2rem;
+  --kng-text-4xl: 2.5rem;
+
+  /* ---- Shadows & (subtle, Kanagawa-toned) glow ------------------------- */
+  --kng-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --kng-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --kng-shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --kng-glow: 0 0 0 1px rgba(122, 168, 159, 0.40), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --kng-glow-magenta: 0 0 0 1px rgba(210, 126, 153, 0.40), 0 4px 16px rgba(0, 0, 0, 0.35);
+
+  /* ---- Atmosphere (flat — Kanagawa has no dotted grid) ----------------- */
+  --kng-grid: none;
+  --kng-grid-size: 22px;
+  --kng-fill-cyan: rgba(122, 168, 159, 0.14);
+  --kng-fill-cyan-border: rgba(122, 168, 159, 0.45);
+  --kng-fill-success: rgba(152, 187, 108, 0.16);
+  --kng-fill-success-border: rgba(152, 187, 108, 0.40);
+  --kng-fill-error: rgba(255, 93, 98, 0.15);
+  --kng-fill-error-border: rgba(255, 93, 98, 0.42);
+  --kng-fill-gold: rgba(220, 165, 97, 0.18);
+  --kng-fill-magenta: rgba(210, 126, 153, 0.16);
+  --kng-fill-violet: rgba(149, 127, 184, 0.18);
+  --kng-overlay: rgba(0, 0, 0, 0.6);
+
+  /* ---- Transitions ----------------------------------------------------- */
+  --kng-transition-fast: 150ms ease;
+  --kng-transition-normal: 250ms ease;
+  --kng-transition-slow: 400ms ease;
+}
+
+[data-theme="dark"] {
+  --kng-bg: #16161D;
+  --kng-bg-elevated: #1F1F28;
+  --kng-surface: #2A2A37;
+  --kng-surface-2: #1F1F28;
+  --kng-surface-hover: #363646;
+  --kng-border: #363646;
+  --kng-border-strong: #7AA89F;
+  --kng-text: #DCD7BA;
+  --kng-text-secondary: #C8C093;
+  --kng-text-muted: #969585;
+  --kng-text-faint: #969585;
+  --kng-accent: #FFA066;
+  --kng-cyan: #7AA89F;
+  --kng-cyan-bright: #8EC0B5;
+  --kng-cyan-deep: #5E8079;
+  --kng-teal: #7AA89F;
+  --kng-blue: #7E9CD8;
+  --kng-magenta: #D27E99;
+  --kng-purple: #957FB8;
+  --kng-violet: #957FB8;
+  --kng-pink: #D27E99;
+  --kng-gold: #DCA561;
+  --kng-yellow: #DCA561;
+  --kng-warning: #FF9E3B;
+  --kng-success: #98BB6C;
+  --kng-error: #FF5D62;
+  --kng-error-subtle: #E46876;
+  --kng-on-accent: #16161D;
+  --kng-on-gold: #16161D;
+  --kng-art-azure: #2E3B57;
+  --kng-art-jade: #2C4A40;
+  --kng-art-crimson: #4A2E38;
+  --kng-art-violet: #3A3350;
+  --kng-glow: 0 0 0 1px rgba(122, 168, 159, 0.40), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --kng-glow-magenta: 0 0 0 1px rgba(210, 126, 153, 0.40), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --kng-grid: none;
+  --kng-fill-cyan: rgba(122, 168, 159, 0.14);
+  --kng-fill-cyan-border: rgba(122, 168, 159, 0.45);
+  --kng-fill-success: rgba(152, 187, 108, 0.16);
+  --kng-fill-success-border: rgba(152, 187, 108, 0.40);
+  --kng-fill-error: rgba(255, 93, 98, 0.15);
+  --kng-fill-error-border: rgba(255, 93, 98, 0.42);
+  --kng-fill-gold: rgba(220, 165, 97, 0.18);
+  --kng-fill-magenta: rgba(210, 126, 153, 0.16);
+  --kng-fill-violet: rgba(149, 127, 184, 0.18);
+  --kng-overlay: rgba(0, 0, 0, 0.6);
+}
+
+/* Light — Kanagawa lotus */
+[data-theme="light"] {
+  --kng-bg: #F2ECBC;
+  --kng-bg-elevated: #FFFFFF;
+  --kng-surface: #E7DBA0;
+  --kng-surface-2: #EDE3AE;
+  --kng-surface-hover: #D5CEA3;
+  --kng-border: #D5CEA3;
+  --kng-border-strong: #597B75;
+  --kng-text: #545464;          /* lotusInk1 */
+  --kng-text-secondary: #43436C;/* lotusInk2 */
+  --kng-text-muted: #605F55;    /* lotusGray (AA-darkened) */
+  --kng-text-faint: #605F55;
+  --kng-accent: #CC6D00;        /* lotusOrange */
+  --kng-cyan: #597B75;          /* lotusTeal — primary */
+  --kng-cyan-bright: #4A655F;   /* hover darkens (white ink stays AA) */
+  --kng-cyan-deep: #4A655F;
+  --kng-teal: #597B75;
+  --kng-blue: #4E8ACA;          /* lotusBlue */
+  --kng-magenta: #B35B79;       /* lotusPink — forecast */
+  --kng-purple: #8A73B3;        /* lotusViolet */
+  --kng-violet: #8A73B3;
+  --kng-pink: #B35B79;
+  --kng-gold: #836F4A;          /* lotusYellow */
+  --kng-yellow: #836F4A;
+  --kng-warning: #765916;
+  --kng-success: #6F894E;       /* lotusGreen */
+  --kng-error: #C84053;         /* lotusRed */
+  --kng-error-subtle: #C84053;
+  --kng-on-accent: #FFFFFF;     /* white ink on darker lotus teal/gold */
+  --kng-on-gold: #FFFFFF;
+  --kng-art-azure: #C5CCE0;
+  --kng-art-jade: #C7D6BE;
+  --kng-art-crimson: #E2C9C2;
+  --kng-art-violet: #D6CCE2;
+  --kng-shadow-sm: 0 1px 2px rgba(84, 84, 100, 0.12);
+  --kng-shadow-md: 0 2px 8px rgba(84, 84, 100, 0.18);
+  --kng-shadow-lg: 0 4px 16px rgba(84, 84, 100, 0.22);
+  --kng-glow: 0 0 0 1px rgba(89, 123, 117, 0.45), 0 4px 16px rgba(84, 84, 100, 0.2);
+  --kng-glow-magenta: 0 0 0 1px rgba(179, 91, 121, 0.4), 0 4px 16px rgba(84, 84, 100, 0.2);
+  --kng-grid: none;
+  --kng-fill-cyan: rgba(89, 123, 117, 0.14);
+  --kng-fill-cyan-border: rgba(89, 123, 117, 0.45);
+  --kng-fill-success: rgba(111, 137, 78, 0.16);
+  --kng-fill-success-border: rgba(111, 137, 78, 0.42);
+  --kng-fill-error: rgba(200, 64, 83, 0.14);
+  --kng-fill-error-border: rgba(200, 64, 83, 0.42);
+  --kng-fill-gold: rgba(131, 111, 74, 0.16);
+  --kng-fill-magenta: rgba(179, 91, 121, 0.14);
+  --kng-fill-violet: rgba(138, 115, 179, 0.16);
+  --kng-overlay: rgba(84, 84, 100, 0.45);
+}
+
+/* Opt-in "Kamigawa: Neon Dynasty" skin — the original redesign aesthetic,
+ * selectable via the theme toggle (dark → light → neon). Not the default. */
+[data-theme="neon"] {
+  --kng-bg: #0A0E1A;
+  --kng-bg-elevated: #0C1120;
+  --kng-surface: #141A2E;
+  --kng-surface-2: #0F1426;
+  --kng-surface-hover: #1C2440;
+  --kng-border: #232B45;
+  --kng-border-strong: #38E1D6;
+  --kng-text: #E8ECF5;
+  --kng-text-secondary: #A6AEC4;
+  --kng-text-muted: #8A93AD;
+  --kng-text-faint: #828DA6;
+  --kng-accent: #38E1D6;
+  --kng-cyan: #38E1D6;
+  --kng-cyan-bright: #5EEAE0;
+  --kng-cyan-deep: #0E8E86;
+  --kng-teal: #38E1D6;
+  --kng-blue: #38E1D6;
+  --kng-magenta: #F0399C;
+  --kng-purple: #7C3AED;
+  --kng-violet: #A78BFA;
+  --kng-pink: #F0399C;
+  --kng-gold: #E8B84B;
+  --kng-yellow: #E8B84B;
+  --kng-warning: #E8B84B;
+  --kng-success: #4ADE80;
+  --kng-error: #FB7185;
+  --kng-error-subtle: #F0399C;
+  --kng-on-accent: #06141C;
+  --kng-on-gold: #0A0E1A;
+  --kng-art-azure: #1E3A8A;
+  --kng-art-jade: #0E5A4A;
+  --kng-art-crimson: #5A1A2A;
+  --kng-art-violet: #3A1A5A;
+  /* ink-brush serif for headlines (the Neon Dynasty motif) */
+  --kng-font-display: "Shippori Mincho", "Yu Mincho", Georgia, serif;
+  --kng-shadow-md: 0 8px 30px -14px rgba(0, 0, 0, 0.7);
+  --kng-shadow-lg: 0 18px 50px -18px rgba(0, 0, 0, 0.8);
+  --kng-glow: 0 0 0 1px rgba(56, 225, 214, 0.25), 0 10px 40px -10px rgba(56, 225, 214, 0.35);
+  --kng-glow-magenta: 0 0 0 1px rgba(240, 57, 156, 0.25), 0 10px 40px -10px rgba(240, 57, 156, 0.3);
+  --kng-grid: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 0);
+  --kng-fill-cyan: rgba(56, 225, 214, 0.10);
+  --kng-fill-cyan-border: rgba(56, 225, 214, 0.25);
+  --kng-fill-success: rgba(74, 222, 128, 0.14);
+  --kng-fill-success-border: rgba(74, 222, 128, 0.28);
+  --kng-fill-error: rgba(251, 113, 133, 0.14);
+  --kng-fill-error-border: rgba(251, 113, 133, 0.30);
+  --kng-fill-gold: rgba(232, 184, 75, 0.16);
+  --kng-fill-magenta: rgba(240, 57, 156, 0.12);
+  --kng-fill-violet: rgba(167, 139, 250, 0.15);
+  --kng-overlay: rgba(5, 8, 16, 0.72);
+}
+
+/* No-JS / system-preference light fallback (mirrors [data-theme="light"]). */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]):not([data-theme="neon"]) {
+    --kng-bg: #F2ECBC;
+    --kng-bg-elevated: #FFFFFF;
+    --kng-surface: #E7DBA0;
+    --kng-surface-2: #EDE3AE;
+    --kng-surface-hover: #D5CEA3;
+    --kng-border: #D5CEA3;
+    --kng-text: #545464;
+    --kng-text-secondary: #43436C;
+    --kng-text-muted: #605F55;
+    --kng-text-faint: #605F55;
+    --kng-accent: #CC6D00;
+    --kng-cyan: #597B75;
+    --kng-cyan-bright: #4A655F;
+    --kng-cyan-deep: #4A655F;
+    --kng-teal: #597B75;
+    --kng-blue: #4E8ACA;
+    --kng-magenta: #B35B79;
+    --kng-purple: #8A73B3;
+    --kng-violet: #8A73B3;
+    --kng-pink: #B35B79;
+    --kng-gold: #836F4A;
+    --kng-yellow: #836F4A;
+    --kng-warning: #765916;
+    --kng-success: #6F894E;
+    --kng-error: #C84053;
+    --kng-on-accent: #FFFFFF;
+    --kng-on-gold: #FFFFFF;
+    --kng-art-azure: #C5CCE0;
+    --kng-art-jade: #C7D6BE;
+    --kng-art-crimson: #E2C9C2;
+    --kng-art-violet: #D6CCE2;
+    --kng-grid: none;
+    --kng-fill-cyan: rgba(89, 123, 117, 0.14);
+    --kng-fill-cyan-border: rgba(89, 123, 117, 0.45);
+    --kng-fill-success: rgba(111, 137, 78, 0.16);
+    --kng-fill-error: rgba(200, 64, 83, 0.14);
+    --kng-fill-violet: rgba(138, 115, 179, 0.16);
+  }
+}
