@@ -3,6 +3,7 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const { db, getDoc, putDoc } = require('./db');
 const duties = require('./duties');
+const { migriere } = require('./migrate-duties');
 const { scheduleBackups } = require('./backup');
 const { audit } = require('./audit');
 const { hit } = require('./ratelimit');
@@ -125,19 +126,78 @@ app.post('/api/admin/login-link', authMiddleware, adminMiddleware, (req, res) =>
 
 // ── Admin: Nutzerverwaltung (Allowlist) ──────────────────────────────
 app.get('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
-  const rows = db.prepare('SELECT id, email, is_admin FROM users ORDER BY email').all();
-  res.json({ users: rows.map(u => ({ id: u.id, email: u.email, isAdmin: !!u.is_admin })) });
+  const rows = db.prepare('SELECT id, email, is_admin, display_name, active FROM users ORDER BY email').all();
+  res.json({
+    users: rows.map(u => ({
+      id: u.id, email: u.email, isAdmin: !!u.is_admin,
+      name: u.display_name || null, active: !!u.active,
+    })),
+  });
 });
 
 app.post('/api/admin/users', authMiddleware, adminMiddleware, (req, res) => {
   const email = normalizeEmail((req.body && req.body.email) || '');
+  // Der Anzeigename ist optional, aber ohne ihn steht im Aushang nur der
+  // E-Mail-Anfang — und der Alt-Datenabgleich braucht ihn.
+  const name = ((req.body && req.body.name) || '').trim() || null;
   if (!email || !email.includes('@')) return res.status(400).json({ error: 'Ungültige E-Mail' });
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (!existing) {
-    db.prepare('INSERT INTO users (email, is_admin, created_at) VALUES (?, 0, ?)').run(email, new Date().toISOString());
+    db.prepare('INSERT INTO users (email, is_admin, created_at, display_name) VALUES (?, 0, ?, ?)')
+      .run(email, new Date().toISOString(), name);
     audit('admin_add', req.user.id, ipHashOf(req));
+  } else if (name && name !== existing.display_name) {
+    db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(name, existing.id);
   }
   res.json({ ok: true });
+});
+
+app.put('/api/admin/users/:id/name', authMiddleware, adminMiddleware, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const name = ((req.body && req.body.name) || '').trim();
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Ungültige ID' });
+  if (!name) return res.status(400).json({ error: 'Name darf nicht leer sein' });
+  const info = db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(name, id);
+  if (!info.changes) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/users/:id/activate', authMiddleware, adminMiddleware, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Ungültige ID' });
+  const info = db.prepare('UPDATE users SET active = 1 WHERE id = ?').run(id);
+  if (!info.changes) return res.status(404).json({ error: 'Nutzer nicht gefunden' });
+  audit('admin_activate', req.user.id, ipHashOf(req));
+  res.json({ ok: true });
+});
+
+// Welche Namen aus den Altdaten haben schon ein Konto, welche nicht?
+app.get('/api/admin/legacy-names', authMiddleware, adminMiddleware, (req, res) => {
+  const doc = getDoc(req.user.id, 'duties');
+  const namen = Object.keys((doc && doc.value) || {});
+  const bekannt = new Set(
+    db.prepare('SELECT display_name FROM users WHERE display_name IS NOT NULL').all().map(r => r.display_name),
+  );
+  res.json({
+    offen: namen.filter(n => !bekannt.has(n)),
+    zugeordnet: namen.filter(n => bekannt.has(n)),
+  });
+});
+
+// Alt-Dienste uebernehmen — zugeordnet ueber die Anzeigenamen.
+app.post('/api/admin/migrate-legacy', authMiddleware, adminMiddleware, (req, res) => {
+  const idsNachName = {};
+  for (const r of db.prepare('SELECT id, display_name FROM users WHERE display_name IS NOT NULL').all()) {
+    idsNachName[r.display_name] = r.id;
+  }
+  try {
+    const erg = migriere({ adminUserId: req.user.id, zuordnung: idsNachName });
+    audit('legacy_migration', req.user.id, ipHashOf(req));
+    res.json(erg);
+  } catch (e) {
+    // Unzugeordnete Namen sind kein Serverfehler, sondern eine Aufgabe fuer den Admin.
+    res.status(409).json({ error: e.message });
+  }
 });
 
 app.delete('/api/admin/users/:id', authMiddleware, adminMiddleware, (req, res) => {

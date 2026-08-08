@@ -691,16 +691,41 @@ header h1::before {
 /* Zeile aus auth-ui.js — die Datei setzt zusaetzlich einen Inline-Style
    (display/padding/border-bottom), der hier nicht ueberschrieben wird;
    bewusste Grenze, im Ledger dokumentiert. */
+/* Der frühere Inline-cssText aus auth-ui.js ist weg — die Zeile wird jetzt
+   vollständig hier gestylt. */
 .admin-user-row {
-    /* Das Inline-cssText setzt display:flex OHNE flex-wrap — bei schmalen
-       Viewports laufen E-Mail + Button sonst aus dem Bild (real gemessen bei
-       360px, A6). flex-wrap und overflow-wrap stehen NICHT im Inline-Style,
-       greifen hier also. */
+    display: flex;
+    align-items: center;
     flex-wrap: wrap;
     gap: var(--kng-space-sm);
+    padding: var(--kng-space-sm) 0;
+    border-bottom: 1px solid var(--kng-border);
     overflow-wrap: anywhere;
     color: var(--kng-text-secondary);
     font-size: var(--kng-text-sm);
+}
+
+.admin-user-mail {
+    flex: 1;
+    min-width: 12rem;
+}
+
+.admin-user-name {
+    width: 10rem;
+    padding: var(--kng-space-xs) var(--kng-space-sm);
+    border: 1px solid var(--kng-border);
+    border-radius: var(--kng-radius-md);
+    background: var(--kng-surface-2);
+    color: var(--kng-text);
+    font-family: inherit;
+    font-size: var(--kng-text-sm);
+}
+
+#admin-legacy {
+    margin-top: var(--kng-space-md);
+    padding: var(--kng-space-md);
+    background: var(--kng-surface);
+    border-radius: var(--kng-radius-md);
 }
 
 /* --- Utilities ------------------------------------------------------ */

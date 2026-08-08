@@ -222,9 +222,16 @@
                         <h4>Nutzer verwalten (Admin)</h4>
                         <form id="admin-add-form" class="admin-form">
                             <input type="email" id="admin-add-email" placeholder="E-Mail freischalten" required>
+                            <input type="text" id="admin-add-name" placeholder="Anzeigename (z. B. Alsholi)">
                             <button type="submit" class="btn btn-primary">Freischalten</button>
                         </form>
+                        <p class="text-muted">
+                            Der Anzeigename erscheint im Team-Plan. Für Kolleginnen und Kollegen aus
+                            den alten Daten muss er <strong>genau so</strong> geschrieben sein wie dort —
+                            daran hängt die Übernahme der bisherigen Dienste.
+                        </p>
                         <div id="admin-user-list"></div>
+                        <div id="admin-legacy"></div>
                     </div>
                 </div>
 

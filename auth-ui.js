@@ -55,12 +55,16 @@ const AuthUI = {
       addForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const input = document.getElementById('admin-add-email');
+        const nameInput = document.getElementById('admin-add-name');
         const email = (input.value || '').trim();
-        await fetch('/api/admin/users', {
+        const name = nameInput ? (nameInput.value || '').trim() : '';
+        const r = await fetch('/api/admin/users', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', body: JSON.stringify({ email }),
+          credentials: 'include', body: JSON.stringify({ email, name }),
         });
+        if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Anlegen fehlgeschlagen'); return; }
         input.value = '';
+        if (nameInput) nameInput.value = '';
         this.loadUsers();
       });
     }
@@ -77,22 +81,100 @@ const AuthUI = {
       users.forEach((u) => {
         const row = document.createElement('div');
         row.className = 'admin-user-row';
-        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #eee';
+
         const span = document.createElement('span');
-        span.textContent = u.email + (u.isAdmin ? '  (Admin)' : '');
+        span.className = 'admin-user-mail';
+        span.textContent = u.email + (u.isAdmin ? '  (Admin)' : '') + (u.active ? '' : '  — deaktiviert');
         row.appendChild(span);
-        const btn = document.createElement('button');
-        btn.className = 'btn btn-secondary';
-        btn.textContent = 'Entfernen';
-        btn.addEventListener('click', async () => {
-          if (!confirm(`Nutzer ${u.email} entfernen?`)) return;
-          const r = await fetch('/api/admin/users/' + u.id, { method: 'DELETE', credentials: 'include' });
-          if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Fehler beim Entfernen'); }
+
+        // Anzeigename: erscheint so im Team-Plan und ordnet die Alt-Dienste zu.
+        const name = document.createElement('input');
+        name.type = 'text';
+        name.className = 'admin-user-name';
+        name.placeholder = 'Anzeigename';
+        name.value = u.name || '';
+        name.addEventListener('change', async () => {
+          const r = await fetch(`/api/admin/users/${u.id}/name`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', body: JSON.stringify({ name: name.value }),
+          });
+          if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Name nicht gespeichert'); }
           this.loadUsers();
         });
-        row.appendChild(btn);
+        row.appendChild(name);
+
+        const knopf = (text, klasse, fn) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = `btn btn-small ${klasse}`;
+          b.textContent = text;
+          b.addEventListener('click', fn);
+          row.appendChild(b);
+        };
+
+        if (u.active) {
+          knopf('Deaktivieren', 'btn-secondary', async () => {
+            if (!confirm(`${u.email} deaktivieren? Die Person kann sich dann nicht mehr anmelden, ihre Dienste bleiben erhalten.`)) return;
+            const r = await fetch(`/api/admin/users/${u.id}/deactivate`, { method: 'POST', credentials: 'include' });
+            if (!r.ok) { const j = await r.json().catch(() => ({})); alert(j.error || 'Fehler'); }
+            this.loadUsers();
+          });
+        } else {
+          knopf('Wieder aktivieren', 'btn-primary', async () => {
+            await fetch(`/api/admin/users/${u.id}/activate`, { method: 'POST', credentials: 'include' });
+            this.loadUsers();
+          });
+        }
+
+        knopf('Entfernen', 'btn-danger', async () => {
+          if (!confirm(`Nutzer ${u.email} endgültig entfernen?`)) return;
+          const r = await fetch('/api/admin/users/' + u.id, { method: 'DELETE', credentials: 'include' });
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            alert(j.error || 'Fehler beim Entfernen');
+          }
+          this.loadUsers();
+        });
+
         list.appendChild(row);
       });
+      this.loadLegacy();
+    } catch { /* ignorieren */ }
+  },
+
+  // Zeigt, welche Namen aus den Altdaten noch kein Konto haben, und bietet
+  // die einmalige Uebernahme an, sobald alle zugeordnet sind.
+  async loadLegacy() {
+    const box = document.getElementById('admin-legacy');
+    if (!box) return;
+    try {
+      const res = await fetch('/api/admin/legacy-names', { credentials: 'include' });
+      if (!res.ok) return;
+      const { offen, zugeordnet } = await res.json();
+      box.innerHTML = '';
+      if (!offen.length && !zugeordnet.length) return;
+
+      const p = document.createElement('p');
+      p.className = 'text-muted';
+      p.textContent = offen.length
+        ? `Ohne Konto: ${offen.join(', ')} — trag oben die E-Mail ein und schreib denselben Namen ins Feld.`
+        : `Alle ${zugeordnet.length} Namen aus den Altdaten sind zugeordnet.`;
+      box.appendChild(p);
+
+      if (!offen.length) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn btn-primary';
+        b.textContent = 'Alte Dienste übernehmen';
+        b.addEventListener('click', async () => {
+          const r = await fetch('/api/admin/migrate-legacy', { method: 'POST', credentials: 'include' });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) { alert(j.error || 'Übernahme fehlgeschlagen'); return; }
+          alert(`${j.dienste} Dienste und ${j.urlaube} Urlaubsmonate übernommen.\n\n${j.zeilen.join('\n')}`);
+          this.loadLegacy();
+        });
+        box.appendChild(b);
+      }
     } catch { /* ignorieren */ }
   },
 
