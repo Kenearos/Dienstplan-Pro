@@ -6,6 +6,98 @@ Eine Verwerfung braucht Evidenz — Code-Zitat, Testlauf oder Repro-Versuch.
 Laufende Arbeit mit eigenem Ledger: [UI-Redesign „Kamigawa"](docs/REDESIGN-KAMIGAWA-LEDGER.md)
 (Branch `redesign/kamigawa-ui`).
 
+## Epic: Team-Dienstplan — Dienste als Datensätze, Aushang, Passwörter (2026-08-08)
+
+**Auslöser (Benutzer):** „am besten eine Art Tabelle, wo man nur reinklickt und den Namen
+von sich reinklickt, und der Admin macht die Kontrolle." Aus der Klärung wurde ein
+Release: eigene Logins für die acht, Team-Aushang für alle sichtbar, **Freigabe pro
+Dienst**, Beträge privat. Architektur: Server ist die Wahrheit, Eintragen braucht Netz.
+
+**Artefakte:** Spec `docs/superpowers/specs/2026-08-08-team-dienstplan-design.md`
+(zwei Gate-Linsen), Plan `docs/superpowers/plans/2026-08-08-team-dienstplan-tp1.md`.
+
+### Gates auf das Planungsartefakt
+
+| Linse | Kritiker | Findings | Urteile |
+|---|---|---|---|
+| Architektur/Technik | opencode `mimo-v2.5-free`, 94 s | 12 | 7 übernommen, 3 halb, 2 verworfen |
+| Sicherheit/DSGVO | opencode `mimo-v2.5-free`, 74 s | 8 | 3 übernommen, 3 halb, 2 verworfen |
+
+**Die zwei Funde, die das Design gerettet haben:**
+
+1. **`UNIQUE (user_id, date)` hätte eine Sackgasse gebaut.** Ein abgelehnter Dienst bleibt
+   als Zeile stehen, Löschen ist nur bei `pending` erlaubt — der Kollege hätte für diesen
+   Tag nie wieder etwas eintragen können. Jetzt partieller Index über
+   `status <> 'rejected'`, mit eigenem Wächter-Test.
+2. **`ON DELETE CASCADE` hätte beim ersten Personalwechsel die Vergütungsgrundlage
+   vernichtet.** `DELETE /api/admin/users/:id` existierte bereits; ein ausscheidender
+   Kollege hätte still alle freigegebenen Dienste mitgenommen. Jetzt `ON DELETE RESTRICT`
+   plus `users.active`: Ausscheiden heißt deaktivieren.
+
+Beides hätte kein Test gefangen — es wäre die spezifikationsgemäße Wirkung gewesen.
+
+### Umsetzung (Suite 61 → 108, ein Commit pro Story)
+
+| Commit | Inhalt | Suite |
+|---|---|---|
+| `7e4d016` | Schema: `duties`, partieller Index, `vacation_months`, `users.display_name`/`active` | 64 |
+| `3c27c8e` | Regel-Schicht `duties.js` ohne Express | 72 |
+| `0bbdb0f` | Endpunkte: eintragen, Aushang, Freigabe | 79 |
+| `830d68f` | Ausscheiden statt Löschen | 81 |
+| `b751166` | Migrationslauf Blob → Tabelle | 85 |
+| `49c6720` | **Team-Plan**: die anklickbare Monatstabelle | 85 |
+| `9ab33c9` + `5b5116a` | Onboarding als ein Befehl; Nutzerverwaltung mit Namen, Deaktivieren, Alt-Datenübernahme | 97 |
+| `e502c7f` | Anmeldung mit E-Mail und Passwort | 108 |
+
+**Zwei eigene Fehler, ehrlich vermerkt:**
+
+- Bei Task 4 ließ mein `active = 1`-Filter `consumeLoginToken` auf `undefined` zugreifen —
+  die Anmeldung wäre mit einem Absturz gescheitert statt mit einer sauberen Abweisung.
+  Der Test hat es gefangen, weil er auf `400` bestand.
+- Bei Task 5 lief der Test **nicht zuerst rot** — Test und Code entstanden zusammen. Statt
+  das durchgehen zu lassen: Implementierung mutiert (`kalendertag` auf naives
+  `iso.slice(0,10)`), Test fiel um. Er hat Zähne.
+
+### Benutzer-Entscheidungen, die vom Vorschlag abweichen
+
+- **Freigabe pro Dienst** statt pro Monat oder nur bei Auffälligkeiten — die teuerste
+  Variante, nach Nennung des Preises (40–50 Entscheidungen/Monat) bewusst gewählt.
+- **Passwort setzen ohne Link-Übergabe:** Wer eine freigeschaltete Adresse kennt, darf ihr
+  Passwort setzen, solange keines gesetzt ist. Ich habe davon abgeraten (ein Konto lässt
+  sich so von Dritten besetzen, bevor die Person sich meldet); der Betreiber hat es nach
+  Nennung des Risikos so entschieden. Gegenmaßnahmen im Rahmen dieser Wahl: nach dem
+  ersten Passwort ist das Konto zu (`409`), jede Einrichtung wird als `password_claimed`
+  auditiert, Rate-Limit pro IP **und** pro Adresse, eine einzige neutrale Fehlermeldung.
+
+### Echte Verifikation (Browser, laufender Server)
+
+Team-Plan: eingetragen → gestrichelt „vorgemerkt" → freigegeben → durchgezogen; halber
+Dienst markiert den Tag golden (Regel aus den 26 Bestandsdiensten: ein Tag ergibt 1,0).
+Nutzerverwaltung: zwei Konten mit Namen angelegt, Hinweis schlug auf „alle zugeordnet" um,
+Übernahme lieferte 3 Dienste und 1 Urlaubsmonat mit Protokoll, Dienste erschienen im Plan.
+Passwörter: Kollege setzt sein Passwort selbst und ist drin; zweite Beanspruchung `409`,
+Fremdpasswort `401`, echtes `200`.
+
+### Deploys (drei am selben Tag, je mit Rollback-Anker und Backup aller drei DB-Dateien)
+
+`49c6720` (TP1 + Team-Plan) · `5b5116a` (Nutzerverwaltung) · `e502c7f` (Passwörter, sw v12).
+Nach jedem Deploy von außen geprüft: neue Endpunkte antworten ohne Anmeldung mit `401`,
+der alte Blob blieb unangetastet (1398 Bytes), die neue Tabelle leer — die Übergangsregel
+aus der Spec hält.
+
+**Kontenstand:** `kenearos@mastersofdungeons.de` und `o.alsholi@st-augustinus.de`, beide
+Admin, beide aktiv, beide **ohne Anzeigenamen** — der fehlt noch und blockiert die
+Übernahme der Juni-Dienste (zugeordnet wird über den Namen, nicht die Adresse).
+
+### Offen
+
+1. **Anzeigenamen setzen**: `Benadjemia` und `Alsholi`, exakt wie in den Altdaten.
+2. **Sechs weitere Konten** — Adressen stehen noch aus.
+3. **A8 (Druckvorschau)** aus dem Kamigawa-Release weiterhin nur statisch geprüft.
+4. **graphify**: das `gsd`-Plugin wurde deinstalliert und wird neu installiert; der
+   Erstbuild gehört in eine Sitzung **nach** der Installation, weil Skills beim Start
+   geladen werden.
+
 ## Release: v1.0 + Kamigawa-UI auf Hetzner deployt (2026-08-08)
 
 **Ausgangslage — vorher gemessen, nicht angenommen:** Der Live-Container lief auf Commit
