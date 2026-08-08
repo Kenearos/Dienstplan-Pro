@@ -2,6 +2,7 @@ const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const { db, getDoc, putDoc } = require('./db');
+const duties = require('./duties');
 const { scheduleBackups } = require('./backup');
 const { audit } = require('./audit');
 const { hit } = require('./ratelimit');
@@ -166,6 +167,55 @@ app.put('/api/state', authMiddleware, (req, res) => {
   const now = new Date().toISOString();
   for (const key of KEYS) { if (body[key] !== undefined) putDoc(req.user.id, key, body[key], now); }
   res.json({ status: 'ok', updatedAt: now });
+});
+
+// ── Dienste als Datensaetze ──────────────────────────────────────────
+// user_id kommt ausschliesslich aus der Session (req.user.id) — die
+// v1.0-Invariante gilt unveraendert fuer jeden Schreibzugriff.
+function fachFehlerAntwort(res, e) {
+  const codes = { UNGUELTIG: 400, NICHT_GEFUNDEN: 404, DOPPELT: 409, ENTSCHIEDEN: 409 };
+  if (e instanceof duties.FachFehler) return res.status(codes[e.code] || 400).json({ error: e.nachricht });
+  throw e;
+}
+
+app.post('/api/duties', authMiddleware, (req, res) => {
+  const { date, share } = req.body || {};
+  try {
+    const { id } = duties.anlegen({ userId: req.user.id, date, share });
+    res.status(201).json({ id });
+  } catch (e) { fachFehlerAntwort(res, e); }
+});
+
+app.delete('/api/duties/:id', authMiddleware, (req, res) => {
+  try {
+    duties.loeschen({ userId: req.user.id, id: parseInt(req.params.id, 10) });
+    res.json({ ok: true });
+  } catch (e) { fachFehlerAntwort(res, e); }
+});
+
+// Aushang: bewusst kontouebergreifend lesbar, aber ohne jeden Betrag.
+app.get('/api/roster', authMiddleware, (req, res) => {
+  try {
+    res.json({ duties: duties.monat(req.query.month) });
+  } catch (e) { fachFehlerAntwort(res, e); }
+});
+
+app.get('/api/duties/pending', authMiddleware, adminMiddleware, (req, res) => {
+  res.json({ duties: duties.offene() });
+});
+
+app.post('/api/duties/:id/decision', authMiddleware, adminMiddleware, (req, res) => {
+  const { status, note } = req.body || {};
+  try {
+    const { selbst } = duties.entscheiden({
+      adminId: req.user.id, id: parseInt(req.params.id, 10), status, note,
+    });
+    audit('duty_decision', req.user.id, ipHashOf(req));
+    // Entscheidung ueber eigene Dienste ist erlaubt (kein zweiter Freigeber bei
+    // acht Personen), muss aber in der Historie auffallen.
+    if (selbst) audit('self_decision', req.user.id, ipHashOf(req));
+    res.json({ ok: true });
+  } catch (e) { fachFehlerAntwort(res, e); }
 });
 
 app.use(express.static(path.join(__dirname, '..')));
