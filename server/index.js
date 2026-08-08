@@ -4,6 +4,7 @@ const cookieParser = require('cookie-parser');
 const { db, getDoc, putDoc } = require('./db');
 const duties = require('./duties');
 const { migriere } = require('./migrate-duties');
+const { hashPasswort, pruefePasswort, PASSWORT_MIN } = require('./passwords');
 const { scheduleBackups } = require('./backup');
 const { audit } = require('./audit');
 const { hit } = require('./ratelimit');
@@ -103,6 +104,63 @@ app.post('/api/auth/logout', (req, res) => {
   const raw = req.cookies && req.cookies[SESSION_COOKIE];
   if (raw) { const u = validateSession(raw); deleteSession(raw); if (u) audit('logout', u.userId); }
   clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+// ── Passwoerter ──────────────────────────────────────────────────────
+// Bewusste Entscheidung des Betreibers (2026-08-08): wer eine freigeschaltete
+// Adresse kennt, darf ihr Passwort setzen, SOLANGE noch keines gesetzt ist.
+// Danach ist das Konto zu. Jede Einrichtung geht ins Audit-Log, damit
+// nachvollziehbar bleibt, wann ein Konto beansprucht wurde.
+app.post('/api/auth/set-password', (req, res) => {
+  const email = normalizeEmail((req.body && req.body.email) || '');
+  const passwort = (req.body && req.body.password) || '';
+  if (typeof passwort !== 'string' || passwort.length < PASSWORT_MIN) {
+    return res.status(400).json({ error: `Das Passwort muss mindestens ${PASSWORT_MIN} Zeichen haben.` });
+  }
+  if (!hit(`pwset:${req.ip}`, RATE_LIMIT_IP, RATE_LIMIT_WINDOW_MIN)) {
+    return res.status(429).json({ error: 'Zu viele Versuche. Bitte später erneut.' });
+  }
+  const user = email ? db.prepare('SELECT id, password_hash, active FROM users WHERE email = ?').get(email) : null;
+  // Neutral bleiben: die Antwort verraet nicht, ob die Adresse freigeschaltet ist.
+  if (!user || !user.active) return res.json({ ok: true });
+  if (user.password_hash) {
+    return res.status(409).json({ error: 'Für dieses Konto ist bereits ein Passwort gesetzt.' });
+  }
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPasswort(passwort), user.id);
+  audit('password_claimed', user.id, ipHashOf(req));
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const email = normalizeEmail((req.body && req.body.email) || '');
+  const passwort = (req.body && req.body.password) || '';
+  if (!hit(`pwlogin:${req.ip}`, RATE_LIMIT_IP, RATE_LIMIT_WINDOW_MIN)
+      || !hit(`pwlogin:${email}`, RATE_LIMIT_EMAIL, RATE_LIMIT_WINDOW_MIN)) {
+    return res.status(429).json({ error: 'Zu viele Versuche. Bitte später erneut.' });
+  }
+  const user = email ? db.prepare('SELECT id, password_hash, active FROM users WHERE email = ?').get(email) : null;
+  // Eine einzige Meldung fuer alle Fehlerfaelle — sonst verraet sie, welche
+  // Adressen es gibt und welche ein Passwort haben.
+  const abweisen = () => res.status(401).json({ error: 'E-Mail oder Passwort stimmt nicht.' });
+  if (!user || !user.active || !user.password_hash) return abweisen();
+  if (!pruefePasswort(passwort, user.password_hash)) {
+    audit('login_failed', user.id, ipHashOf(req));
+    return abweisen();
+  }
+  setSessionCookie(res, createSession(user.id));
+  audit('login_ok', user.id, ipHashOf(req));
+  res.json({ ok: true });
+});
+
+// Eigenes Passwort aendern (angemeldet) — auch der Weg nach einem Notfall-Link.
+app.post('/api/auth/change-password', authMiddleware, (req, res) => {
+  const passwort = (req.body && req.body.password) || '';
+  if (typeof passwort !== 'string' || passwort.length < PASSWORT_MIN) {
+    return res.status(400).json({ error: `Das Passwort muss mindestens ${PASSWORT_MIN} Zeichen haben.` });
+  }
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPasswort(passwort), req.user.id);
+  audit('password_changed', req.user.id, ipHashOf(req));
   res.json({ ok: true });
 });
 

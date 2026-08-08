@@ -805,6 +805,22 @@ header h1::before {
     color: var(--kng-success);
 }
 
+.login-fehler {
+    margin-top: var(--kng-space-sm);
+    color: var(--kng-error);
+    font-size: var(--kng-text-sm);
+}
+
+.login-fehler[hidden] {
+    display: none;
+}
+
+.login-hilfe {
+    margin-top: var(--kng-space-md);
+    padding-top: var(--kng-space-md);
+    border-top: 1px solid var(--kng-border);
+}
+
 #login-message[hidden] {
     display: none;
 }

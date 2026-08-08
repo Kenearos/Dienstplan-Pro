@@ -34,12 +34,20 @@
     <div id="login-overlay" role="dialog" aria-modal="true" aria-labelledby="login-titel" hidden>
         <div class="login-card">
             <h1 id="login-titel">Dienstplan-Pro</h1>
-            <p>Melde dich mit deiner freigeschalteten Arbeits-E-Mail an — wir schicken dir einen Login-Link.</p>
+            <p>Melde dich mit deiner Arbeits-E-Mail und deinem Passwort an. Beim ersten Mal
+               legst du dein Passwort hier selbst fest.</p>
             <form id="login-form" class="login-form">
-                <input type="email" id="login-email" placeholder="E-Mail" required>
-                <button type="submit" class="btn btn-primary">Login-Link anfordern</button>
+                <input type="email" id="login-email" placeholder="E-Mail" required autocomplete="username">
+                <input type="password" id="login-password" placeholder="Passwort" autocomplete="current-password">
+                <button type="submit" class="btn btn-primary">Anmelden</button>
             </form>
-            <p id="login-message" hidden>Prüfe dein Postfach und klicke den Link.</p>
+            <p id="login-message" hidden>Wenn ein Postfach hinterlegt ist, findest du dort einen Anmeldelink.</p>
+            <p id="login-fehler" class="login-fehler" hidden></p>
+            <p class="login-hilfe">
+                <button type="button" id="login-erstmalig" class="btn btn-small btn-secondary">
+                    Zum ersten Mal hier? Passwort festlegen
+                </button>
+            </p>
         </div>
     </div>
     <div class="container">

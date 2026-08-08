@@ -82,6 +82,7 @@ db.exec(`
 const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
 if (!userCols.includes('display_name')) db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
 if (!userCols.includes('active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+if (!userCols.includes('password_hash')) db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
 
 function getDoc(userId, key) {
   const row = db.prepare('SELECT value, updated_at FROM documents WHERE user_id = ? AND key = ?').get(userId, key);

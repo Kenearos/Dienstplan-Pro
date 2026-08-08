@@ -29,20 +29,79 @@ const AuthUI = {
     const form = document.getElementById('login-form');
     if (!form || form._wired) return;
     form._wired = true;
+    const fehler = (text) => {
+      const p = document.getElementById('login-fehler');
+      if (!p) return;
+      p.textContent = text;
+      p.hidden = !text;
+    };
+
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      fehler('');
       const email = (document.getElementById('login-email').value || '').trim();
+      const feld = document.getElementById('login-password');
+      const passwort = feld ? feld.value : '';
+
+      // Ohne Passwort fällt die Maske auf den Magic-Link zurück — der bleibt
+      // der Notausgang, wenn jemand sein Passwort vergessen hat.
+      if (!passwort) {
+        try {
+          await fetch('/api/auth/request', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', body: JSON.stringify({ email }),
+          });
+        } catch { /* neutral bleiben */ }
+        const msg = document.getElementById('login-message');
+        if (msg) msg.hidden = false;
+        return;
+      }
+
       try {
-        await fetch('/api/auth/request', {
+        const r = await fetch('/api/auth/login', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', body: JSON.stringify({ email }),
+          credentials: 'include', body: JSON.stringify({ email, password: passwort }),
         });
-      } catch { /* neutral bleiben */ }
-      const msg = document.getElementById('login-message');
-      if (msg) msg.hidden = false;
-      const btn = form.querySelector('button');
-      if (btn) btn.disabled = true;
+        if (r.ok) { location.reload(); return; }
+        const j = await r.json().catch(() => ({}));
+        fehler(j.error || 'Anmeldung fehlgeschlagen.');
+      } catch {
+        fehler('Keine Verbindung zum Server.');
+      }
     });
+
+    const ersteinrichtung = document.getElementById('login-erstmalig');
+    if (ersteinrichtung && !ersteinrichtung._wired) {
+      ersteinrichtung._wired = true;
+      ersteinrichtung.addEventListener('click', async () => {
+        fehler('');
+        const email = (document.getElementById('login-email').value || '').trim();
+        const feld = document.getElementById('login-password');
+        const passwort = feld ? feld.value : '';
+        if (!email || !passwort) {
+          fehler('Trag oben deine E-Mail und das gewünschte Passwort ein.');
+          return;
+        }
+        try {
+          const r = await fetch('/api/auth/set-password', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', body: JSON.stringify({ email, password: passwort }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) { fehler(j.error || 'Das hat nicht geklappt.'); return; }
+          // Neutral: der Server sagt nicht, ob die Adresse freigeschaltet ist.
+          // Deshalb gleich den Login versuchen — das gibt die ehrliche Antwort.
+          const l = await fetch('/api/auth/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            credentials: 'include', body: JSON.stringify({ email, password: passwort }),
+          });
+          if (l.ok) { location.reload(); return; }
+          fehler('Passwort gesetzt oder Adresse nicht freigeschaltet — bitte bei der Leitung melden.');
+        } catch {
+          fehler('Keine Verbindung zum Server.');
+        }
+      });
+    }
   },
 
   showAdminSection() {
