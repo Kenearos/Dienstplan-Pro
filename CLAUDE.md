@@ -202,12 +202,10 @@ EXPOSE 3000
 CMD ["node", "server/index.js"]
 ```
 
-Caddy block in `/opt/matrix/Caddyfile` (app + `/api/*` behind Basic-Auth):
+Caddy block in `/opt/matrix/Caddyfile` — **Ist-Zustand seit v1.0** (kein `basic_auth`
+mehr, die App gate-t sich selbst per Magic-Link):
 ```
 bonus.pixel-by-design.de {
-    basic_auth {
-        benad <BCRYPT_HASH>
-    }
     reverse_proxy dienstplan-pro:3000
 }
 ```
@@ -215,19 +213,31 @@ bonus.pixel-by-design.de {
 > **Wichtig:** Die SQLite-DB und die täglichen Backups liegen auf dem
 > benannten Docker-Volume `dienstplan-data` (`/data` im Container, Backups
 > unter `/data/backups/`). Niemals ohne dieses Volume deployen — sonst
-> löscht `docker rm` beim nächsten Update alle Daten unwiderruflich. Die
-> Domain ist komplett hinter Caddy Basic-Auth (gilt auch für `/api/*`).
+> löscht `docker rm` beim nächsten Update alle Daten unwiderruflich.
+>
+> **Der einzige Schutz der Domain ist der Magic-Link-Login der App.** Caddy hat
+> kein `basic_auth` mehr. Wer eine Version **vor** v1.0 deployt (ohne
+> `server/auth.js`), stellt damit `/` **und** `/api/state` ungeschützt ins Netz —
+> genau das war am 2026-08-08 der Fall, siehe `LEDGER.md`. Vor jedem Deploy einer
+> älteren Version also erst den Caddy-Riegel zurücklegen.
 
 **Update procedure** (when pushing new code):
 ```bash
 ssh root@65.21.60.83
 cd /root/Dienstplan-Pro
 git pull
+
+# Rollback-Anker VOR dem Build: `-t …:latest` überschreibt den Tag, danach gibt es
+# ohne diese Zeile keinen Weg zurück auf die laufende Version.
+docker tag dienstplan-pro:latest dienstplan-pro:pre-$(date +%F)
+
 docker build -t dienstplan-pro:latest .
 
 # v1.0+: DB vor dem (ersten) Multi-User-Start sichern — der erste Start migriert das
 # documents-Schema auf (user_id,key) und ordnet ALLE Alt-Daten dem ADMIN_EMAIL zu (einmalig, unumkehrbar).
-docker exec dienstplan-pro sh -c 'cp /data/dienstplan.db /data/dienstplan.db.$(date +%F).bak' || true
+# ALLE DREI Dateien sichern, nicht nur die .db: SQLite läuft im WAL-Modus, der Großteil der
+# Daten kann im -wal stehen (real am 2026-08-08: 4 KB in der .db, 86 KB im WAL).
+docker exec dienstplan-pro sh -c 'cd /data && S=$(date +%F-%H%M%S) && for f in dienstplan.db dienstplan.db-wal dienstplan.db-shm; do [ -f "$f" ] && cp "$f" "backups/vor-deploy-$S.$f"; done' || true
 
 docker stop dienstplan-pro && docker rm dienstplan-pro
 docker run -d --name dienstplan-pro --network matrix_default \
