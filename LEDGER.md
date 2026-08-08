@@ -94,9 +94,42 @@ Admin, beide aktiv, beide **ohne Anzeigenamen** — der fehlt noch und blockiert
 1. **Anzeigenamen setzen**: `Benadjemia` und `Alsholi`, exakt wie in den Altdaten.
 2. **Sechs weitere Konten** — Adressen stehen noch aus.
 3. **A8 (Druckvorschau)** aus dem Kamigawa-Release weiterhin nur statisch geprüft.
-4. **graphify**: das `gsd`-Plugin wurde deinstalliert und wird neu installiert; der
-   Erstbuild gehört in eine Sitzung **nach** der Installation, weil Skills beim Start
-   geladen werden.
+4. **graphify: erledigt — und die bisherige Begründung war falsch.** Siehe eigenen
+   Abschnitt unten.
+
+## Befund: der graphify-Blocker existierte nie (2026-08-08)
+
+**Was ich den ganzen Tag geschrieben habe:** „graphify-Erstbuild blockiert, kein
+LLM-Backend erreichbar." Das stimmte nicht. Nach der Deinstallation des `gsd`-Plugins
+habe ich das CLI direkt angesehen — und `graphify --help` kennt gar kein `extract`:
+
+```
+update <path>   re-extract code files and update the graph (no LLM needed)
+```
+
+Die Code-Extraktion läuft **per AST, ohne Modell**. Ein Backend braucht nur das *Benennen*
+der Communities (`label`, `cluster-only --backend`), und das lässt sich überspringen.
+Der Aufruf `graphify extract . --backend openai` stammt aus `graphify-rollout.sh` des
+gsd-Plugins — dort war der Key nötig, nicht im Werkzeug selbst. Ich habe die Fehlermeldung
+des Skripts für eine Eigenschaft von graphify gehalten und das drei Mal ungeprüft
+weitergeschrieben, statt einmal `--help` aufzurufen.
+
+**Ergebnis ohne gsd und ohne Key:** `graphify update .` → **3448 Knoten, 3660 Kanten,
+272 Communities in 14 s**. Artefakte nach `.planning/graphs/` kopiert. Der SessionStart-Hook
+funktioniert: `built_at_commit` steht im Graphen (`e977936`) — der Snapshot von
+`gsd-tools.cjs` war dafür nicht nötig.
+
+**Einschränkung, gemessen:** Der Graph ist dokumentenlastig. Treffer je Quelle in
+`graph.json`: `_bmad` **7588**, `.claude/skills` **4693**, `server/` **722**, `docs/` 375
+— bei 235 Dateien unter `.claude` gegenüber 32 unter `server/`. Code-Fragen liefern
+deshalb Doku-Knoten: die Frage nach dem Freigabe-Endpunkt fand `adr/0000-template.md` und
+eine BMAD-Schrittanleitung. Für brauchbare Code-Antworten müssen `.claude/` und `_bmad/`
+von der Extraktion ausgenommen werden; die god-nodes stimmen dagegen schon jetzt
+(`DienstplanApp` 32 Kanten, `DataStorage` 26, `ImageImporter` 24, `db` 24).
+
+**Offen:** Ausschlussregel für `.claude/`+`_bmad/` finden, danach neu bauen; Communities
+tragen ohne LLM-Lauf nur Platzhalternamen (`graphify label` mit Backend, wenn wieder eins
+da ist).
 
 ## Release: v1.0 + Kamigawa-UI auf Hetzner deployt (2026-08-08)
 
