@@ -52,9 +52,36 @@ db.exec(`
     user_id INTEGER,
     ip_hash TEXT
   );
+  CREATE TABLE IF NOT EXISTS duties (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    date       TEXT NOT NULL,
+    share      REAL NOT NULL,
+    status     TEXT NOT NULL,
+    note       TEXT,
+    created_at TEXT NOT NULL,
+    decided_by INTEGER REFERENCES users(id),
+    decided_at TEXT
+  );
+  CREATE TABLE IF NOT EXISTS vacation_months (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    month   TEXT NOT NULL,
+    PRIMARY KEY (user_id, month)
+  );
   CREATE INDEX IF NOT EXISTS idx_login_tokens_user ON login_tokens(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+  CREATE INDEX IF NOT EXISTS idx_duties_date ON duties(date);
+  -- Ein GUELTIGER Dienst pro Person und Tag. Abgelehnte zaehlen bewusst nicht mit:
+  -- sonst blockiert eine Ablehnung den Tag fuer immer.
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_duties_person_tag
+    ON duties(user_id, date) WHERE status <> 'rejected';
 `);
+
+// Spalten nachruesten, ohne bestehende Datenbanken zu brechen — gleiches Muster
+// wie migrateToMultiUser in auth.js.
+const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+if (!userCols.includes('display_name')) db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
+if (!userCols.includes('active')) db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
 
 function getDoc(userId, key) {
   const row = db.prepare('SELECT value, updated_at FROM documents WHERE user_id = ? AND key = ?').get(userId, key);
