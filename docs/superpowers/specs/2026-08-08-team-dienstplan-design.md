@@ -48,7 +48,9 @@ die alten Blobs unangetastet liegen bleiben.
 ```sql
 CREATE TABLE IF NOT EXISTS duties (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  -- KEIN CASCADE: freigegebene Dienste sind die Grundlage gezahlter Verguetung
+  -- und duerfen nicht verschwinden, wenn ein Konto entfernt wird (Gate-Finding S1).
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   date       TEXT NOT NULL,              -- 'YYYY-MM-DD', reiner Kalendertag
   share      REAL NOT NULL,              -- 1.0 oder 0.5
   status     TEXT NOT NULL,              -- pending | approved | rejected
@@ -63,9 +65,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_duties_person_tag
   ON duties(user_id, date) WHERE status <> 'rejected';
 CREATE INDEX IF NOT EXISTS idx_duties_date ON duties(date);
 
--- Spalte nur anlegen, wenn sie fehlt (PRAGMA table_info pruefen) — genau das
+-- Spalten nur anlegen, wenn sie fehlen (PRAGMA table_info pruefen) — genau das
 -- Muster, das server/auth.js fuer die Multi-User-Migration schon verwendet.
 ALTER TABLE users ADD COLUMN display_name TEXT;
+-- Ausscheiden heisst deaktivieren, nicht loeschen (Gate-Finding S1).
+ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS vacation_months (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -208,6 +212,48 @@ Gelöscht werden die Blobs erst nach einer Beobachtungszeit und in einem eigenen
 ausdrücklichen Schritt — sie sind bis dahin der Rückweg, wenn die Migration etwas
 verschluckt hat. Ein Doppelschreiben in beide Modelle gibt es zu keinem Zeitpunkt.
 
+## Ausscheiden, Aufbewahrung, Löschung (Gate-Linse Sicherheit/DSGVO)
+
+**Das Problem, das die Sicherheitslinse aufgedeckt hat:** Der bestehende Endpunkt
+`DELETE /api/admin/users/:id` löscht ein Konto, und `ON DELETE CASCADE` räumt alles
+Zugehörige weg. Mit Diensten als Datensätzen hätte das bedeutet: Wenn jemand das Team
+verlässt und du sein Konto entfernst, **verschwinden alle seine freigegebenen Dienste** —
+also die Grundlage bereits gezahlter Vergütung. Still, ohne Warnung, unwiederbringlich.
+Das passiert nicht theoretisch, sondern beim ersten Personalwechsel.
+
+Deshalb:
+
+- `duties.user_id` verweist mit **`ON DELETE RESTRICT`** auf `users`. Ein Konto mit
+  Diensten lässt sich nicht löschen — der Versuch scheitert sichtbar statt still zu wirken.
+- Ausscheiden heißt **deaktivieren, nicht löschen**: `users.active = 0`. Der Kollege kann
+  sich nicht mehr anmelden, erscheint nicht mehr im Aushang kommender Monate, seine
+  Historie bleibt vollständig.
+- Echtes Löschen (Art. 17 DSGVO) bleibt möglich, ist aber ein **eigener, bewusster
+  Vorgang**: erst die Dienste archivieren oder exportieren, dann löschen. Kein Nebeneffekt
+  eines Klicks in der Nutzerverwaltung.
+- **Aufbewahrung:** vergütungsrelevante Daten unterliegen steuerlichen Fristen. Die Spec
+  legt keine Frist fest — das ist eine Entscheidung des Betreibers, keine des Entwicklers;
+  sie gehört ins Verarbeitungsverzeichnis. Festgehalten wird nur, dass es sie braucht.
+- Die `history`-Tabelle (jede Vorversion eines Blobs) hört mit dem Umstellungspunkt auf zu
+  wachsen, weil `PUT /api/state` dann `410` antwortet. Ihre Altbestände fallen unter
+  dieselbe Aufbewahrungsentscheidung.
+
+**Rechtsgrundlage der Team-Sichtbarkeit.** Dass jeder den vollen Plan mit Klarnamen sieht,
+ist eine Verarbeitung personenbezogener Daten über die eigene Person hinaus. Sie ist
+fachlich begründbar — ein Dienstplan ist ein gemeinsames Arbeitsmittel, man muss sehen,
+wer wann steht — aber sie braucht eine dokumentierte Grundlage (berechtigtes Interesse,
+Art. 6 Abs. 1 lit. f, oder eine Betriebsvereinbarung) und einen Eintrag im
+Verarbeitungsverzeichnis. **Das ist kein Code-Thema, sondern eine Hausaufgabe für den
+Betreiber** — sie steht hier, damit sie nicht vergessen wird.
+
+**Bekannte Grenze: der Admin kann sich als jeder anmelden.** `POST /api/admin/login-link`
+erzeugt einen gültigen Anmeldelink für **jedes** Konto (v1.0-Funktion, audit-geloggt als
+`emergency_link`). Die strukturelle Zusage „niemand schreibt in fremdem Namen" gilt damit
+auf API-Ebene, nicht gegen einen Admin, der sich als Kollege anmeldet. Das ist der Preis
+für den Notzugang ohne Mailversand. Es bleibt so, wird aber hier benannt — und jede
+Selbstentscheidung des Admins über eigene Dienste wird als eigenes Audit-Ereignis
+(`self_decision`) geschrieben, damit sie in der Historie auffällt.
+
 ## Fehlerfälle
 
 | Fall | Antwort |
@@ -235,6 +281,11 @@ grün). Neue Fälle, jeder rot vor der Umsetzung:
 - Migration: Datumskonvertierung **inklusive eines Grenzfalls nahe Mitternacht**,
   Urlaubsflags landen in `vacation_months`, Idempotenz, Abbruch bei fehlender Zuordnung
 - Schema-DDL zweimal ausgeführt → keine Fehler (Idempotenz)
+- **Konto mit Diensten lässt sich nicht löschen**: `DELETE /api/admin/users/:id` scheitert
+  sichtbar statt die Vergütungsgrundlage zu vernichten; Deaktivieren gelingt und die
+  Dienste bleiben vollständig erhalten. Wächter über Gate-Finding S1
+- Deaktiviertes Konto: keine Anmeldung mehr möglich, taucht im Aushang künftiger Monate
+  nicht auf, historische Dienste bleiben sichtbar
 - Urlaubsmonat halbiert die Schwellen weiterhin (Regressionsfall aus `variants.test.js`)
 
 ## Gate 1+2 (2026-08-08)
@@ -257,6 +308,23 @@ zum Abgleich `server/db.js`, `server/index.js`, `server/auth.js`, `sync.js`, `va
 | [MITTEL] Kein Verfallsplan für Altdaten | **halb** | In den Übergangs-Abschnitt aufgenommen: einfrieren statt löschen, Löschung später als eigener Schritt |
 | [HOCH] Kein `updated_at` | **verworfen** | Es gibt keine Änderungsoperation: ein `pending`-Dienst kann nur gelöscht werden, jede Entscheidung trägt `decided_at`. `created_at` + `decided_at` decken den Lebenszyklus vollständig ab |
 | [MITTEL] Keine Paginierung für `/pending` | **verworfen** | Vorratsbau. Real sind es 26 Dienste in zwei Monaten; selbst ein theoretischer Vollmonat aller acht bliebe dreistellig — für SQLite und eine JSON-Antwort belanglos |
+
+### Zweite Linse: Sicherheit und Datenschutz (2026-08-08)
+
+Nach DEV-METHOD braucht ein Artefakt in Feature-Größe mehrere Linsen. Kritiker wie oben,
+74 s, Exit 0, zusätzlich `server/audit.js` und `server/ratelimit.js` gelesen.
+**8 Findings — 3 übernommen, 3 halb, 2 mit Evidenz verworfen.**
+
+| Finding | Urteil | Evidenz / Einarbeitung |
+|---|---|---|
+| [KRITISCH] `ON DELETE CASCADE` löscht mit dem Konto die Vergütungsgrundlage | **übernommen** | Der schwerste Fund beider Linsen. `DELETE /api/admin/users/:id` existiert bereits; mit Diensten als Datensätzen hätte der erste Personalwechsel stillschweigend alle freigegebenen Dienste vernichtet. Jetzt `ON DELETE RESTRICT` + Deaktivieren statt Löschen, eigener Abschnitt |
+| [MITTEL] Admin kann für jedes Konto einen Anmeldelink erzeugen | **übernommen** | Real: die Zusage „niemand schreibt in fremdem Namen" gilt nicht gegen einen Admin, der sich als Kollege anmeldet. Als bekannte Grenze benannt statt stillschweigend hingenommen |
+| [HOCH] Verhältnismäßigkeit und Rechtsgrundlage der Team-Sicht | **übernommen** | Als Betreiber-Hausaufgabe dokumentiert: berechtigtes Interesse bzw. Betriebsvereinbarung, Eintrag ins Verarbeitungsverzeichnis. Kein Code-Thema, aber eines, das man nicht vergessen darf |
+| [KRITISCH] `history` wächst unbegrenzt, kein Löschkonzept | **halb** | Das Wachstum endet von selbst am Umstellungspunkt (`PUT /api/state` → `410`). Die Aufbewahrungsfrist für Altbestände ist eine Betreiber-Entscheidung, nicht meine — als solche festgehalten |
+| [HOCH] Admin genehmigt eigene Dienste ohne Gegenprobe | **halb** | Bleibt so (kein zweiter Freigeber bei acht Personen), bekommt aber ein eigenes Audit-Ereignis `self_decision`, damit es in der Historie sichtbar ist |
+| [MITTEL] `history` ohne FK und ohne Löschrecht | **halb** | Deckungsgleich mit dem Punkt darüber, dort mitbehandelt |
+| [HOCH] Admin-Rolle ohne 2FA, lange Sessions | **verworfen für TP1** | Bestandsverhalten aus v1.0 (`SESSION_TTL_DAYS`, `SESSION_IDLE_HOURS` in `server/auth.js`), nicht von dieser Spec eingeführt. Härtung ist eine eigene Story, kein Teil des Datenmodell-Umbaus |
+| [MITTEL] `audit_log.user_id` ohne FK → Waisen nach Löschung | **verworfen** | Absichtlich ohne FK, damit das Audit eine Löschung überlebt. Mit „deaktivieren statt löschen" entfällt der Waisenfall ohnehin |
 
 ## Offene Annahmen — vor der Umsetzung zu bestätigen
 
