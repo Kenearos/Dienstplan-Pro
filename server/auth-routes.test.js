@@ -61,7 +61,7 @@ test('scanner-sicher: GET /auth verbraucht nicht; POST /auth/confirm → Session
 
     r = await req(port, '/api/auth/me', { headers: { Cookie: cookie } });
     assert.strictEqual(r.status, 200);
-    assert.deepStrictEqual(await r.json(), { email: 'login@x.de', isAdmin: true });
+    assert.deepStrictEqual(await r.json(), { id: uid, email: 'login@x.de', isAdmin: true });
 
     r = await req(port, '/api/auth/logout', { method: 'POST', headers: { Cookie: cookie } });
     assert.strictEqual(r.status, 200);

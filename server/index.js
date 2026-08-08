@@ -109,7 +109,8 @@ app.get('/api/auth/me', (req, res) => {
   const raw = req.cookies && req.cookies[SESSION_COOKIE];
   const u = raw ? validateSession(raw) : null;
   if (!u) return res.status(401).json({ error: 'nicht angemeldet' });
-  res.json({ email: u.email, isAdmin: u.isAdmin });
+  // id: die Oberflaeche muss eigene von fremden Eintraegen unterscheiden koennen.
+  res.json({ id: u.userId, email: u.email, isAdmin: u.isAdmin });
 });
 
 // Notzugang: Admin erzeugt einen Login-Link out-of-band (audit-geloggt).

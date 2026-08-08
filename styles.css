@@ -1039,6 +1039,102 @@ header h1::before {
     color: LinkText;
 }
 
+/* --- Team-Plan (Aushang) -------------------------------------------- */
+#roster-month {
+    padding: var(--kng-space-xs) var(--kng-space-sm);
+    border: 1px solid var(--kng-border);
+    border-radius: var(--kng-radius-md);
+    background: var(--kng-surface-2);
+    color: var(--kng-text);
+    font-family: inherit;
+}
+
+.roster-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: var(--kng-space-md);
+}
+
+.roster-table th {
+    padding: var(--kng-space-xs) var(--kng-space-sm);
+    border-bottom: 1px solid var(--kng-border);
+    text-align: left;
+    font-size: var(--kng-text-xs);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--kng-text-muted);
+}
+
+.roster-row td {
+    padding: var(--kng-space-xs) var(--kng-space-sm);
+    border-bottom: 1px solid var(--kng-border);
+    vertical-align: middle;
+}
+
+.roster-tag {
+    width: 6.5rem;
+    font-family: var(--kng-font-mono);
+    font-size: var(--kng-text-sm);
+    color: var(--kng-text-secondary);
+    white-space: nowrap;
+}
+
+.roster-wochenende {
+    color: var(--kng-gold);
+}
+
+/* Auffaellig: Tagessumme ungleich 1,0 — die Regel stammt aus den echten
+   Bestandsdaten (jeder Tag war entweder ganz oder zweimal halb besetzt). */
+.roster-ueberbucht { background: var(--kng-fill-error); }
+.roster-halb { background: var(--kng-fill-gold); }
+
+.roster-person {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--kng-space-xs);
+    margin-right: var(--kng-space-xs);
+    padding: 2px var(--kng-space-sm);
+    border-radius: var(--kng-radius-full);
+    font-size: var(--kng-text-sm);
+}
+
+.roster-approved {
+    background: var(--kng-fill-cyan);
+    color: var(--kng-text);
+}
+
+/* Vorgemerkt sieht bewusst unfertig aus: gestrichelt, bis jemand entscheidet. */
+.roster-pending {
+    background: transparent;
+    border: 1px dashed var(--kng-border-strong);
+    color: var(--kng-text-muted);
+}
+
+.roster-ja,
+.roster-nein {
+    border: none;
+    border-radius: var(--kng-radius-full);
+    background: transparent;
+    cursor: pointer;
+    font-size: var(--kng-text-sm);
+    line-height: 1;
+    padding: 0 2px;
+}
+
+.roster-ja { color: var(--kng-success); }
+.roster-nein { color: var(--kng-error); }
+
+.roster-ja:hover,
+.roster-nein:hover { background: var(--kng-surface-hover); }
+
+.roster-row .btn-small { margin-left: var(--kng-space-xs); }
+
+@media (max-width: 899px) {
+    .roster-tag { width: 4.5rem; }
+    .roster-row td { padding: var(--kng-space-xs); }
+}
+
 /* --- Toast ---------------------------------------------------------- */
 .toast {
     position: fixed;
