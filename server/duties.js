@@ -52,6 +52,28 @@ function anlegen({ userId, date, share }) {
   }
 }
 
+// Admin traegt direkt freigegeben ein — er ist zugleich der Entscheider.
+function anlegenDurchAdmin({ adminId, userId, date, share }) {
+  pruefeDatum(date);
+  pruefeAnteil(share);
+  if (!db.prepare('SELECT id FROM users WHERE id=?').get(userId)) {
+    throw new FachFehler('NICHT_GEFUNDEN', 'Nutzer nicht gefunden');
+  }
+  const now = new Date().toISOString();
+  try {
+    const info = db.prepare(
+      `INSERT INTO duties (user_id,date,share,status,created_at,decided_by,decided_at)
+       VALUES (?,?,?,?,?,?,?)`,
+    ).run(userId, date, share, 'approved', now, adminId, now);
+    return { id: Number(info.lastInsertRowid) };
+  } catch (e) {
+    if (String(e.message).includes('UNIQUE')) {
+      throw new FachFehler('DOPPELT', 'für diesen Tag ist bereits ein Dienst eingetragen');
+    }
+    throw e;
+  }
+}
+
 function loeschen({ userId, id }) {
   const row = db.prepare('SELECT * FROM duties WHERE id=?').get(id);
   // Fremde ID wie nicht vorhanden behandeln: verraet nicht, ob sie existiert.
@@ -63,6 +85,15 @@ function loeschen({ userId, id }) {
   }
   db.prepare('DELETE FROM duties WHERE id=?').run(id);
   return true;
+}
+
+// Admin raeumt Fehleintraege — unabhaengig vom Status. Liefert die betroffene
+// user_id, damit die Route sie ins Audit schreiben kann.
+function loeschenDurchAdmin({ id }) {
+  const row = db.prepare('SELECT user_id FROM duties WHERE id=?').get(id);
+  if (!row) throw new FachFehler('NICHT_GEFUNDEN', 'Dienst nicht gefunden');
+  db.prepare('DELETE FROM duties WHERE id=?').run(id);
+  return row.user_id;
 }
 
 function entscheiden({ adminId, id, status, note }) {
@@ -97,4 +128,6 @@ function offene() {
   return db.prepare(`${AUSWAHL} WHERE d.status='pending' ORDER BY d.date, name`).all();
 }
 
-module.exports = { anlegen, loeschen, entscheiden, monat, offene, FachFehler };
+module.exports = {
+  anlegen, anlegenDurchAdmin, loeschen, loeschenDurchAdmin, entscheiden, monat, offene, FachFehler,
+};

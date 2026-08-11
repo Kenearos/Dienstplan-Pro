@@ -237,3 +237,81 @@ kostenlos — graphify per `OPENAI_BASE_URL=https://opencode.ai/zen/v1` +
 2. **FRET/Tier B** ist auf diesem Rechner nicht verfügbar (`fret.config.json` fehlt, kein
    Klon). Für das UI-Redesign irrelevant (keine temporale Story); Nachrüsten einmalig per
    `FRET_SETUP=1` beim nächsten Installer-Lauf (Netz nötig).
+
+## Feature: Team-Plan wird Berechnungsquelle + Admin trägt für alle ein (2026-08-11)
+
+**Auslöser (Benutzer):** „das neue Team-Plan wird nicht für die Berechnung herangezogen.
+das ist falsch. es soll quasi neuerdings dienste eintragen ersetzen weil es leichter ist.
+und der admin hat da eine art dropdownmenü oben wo er den mitarbeiter auswählen kann und
+dann durchklickt wann der dienste hatte."
+
+**Root Cause (belegt):** Zwei getrennte Speicher. Die Berechnung (und alle Reports/Exporte)
+liest `storage.getAllEmployeeDutiesForMonth` (Dokument-Store `duties`, alter Tab „Dienste
+eintragen", `app.js:453/615/805/868`, Einzelabruf `:401/:777`). Der Team-Plan schreibt in
+die SQL-Tabelle `duties` (`/api/duties`, `server/duties.js`) mit Freigabe-Workflow. Kein
+Pfad verbindet beide.
+
+**Was gebaut wird (2 Stories):**
+
+1. **Server — Admin-Dienste:** `POST /api/admin/duties` `{userId, date, share}` legt einen
+   Dienst **direkt `approved`** an (`decided_by` = Admin); `DELETE /api/admin/duties/:id`
+   löscht jeden Dienst unabhängig vom Status (Admin räumt Fehleinträge). Fachlogik in
+   `server/duties.js` (`anlegenDurchAdmin`, `loeschenDurchAdmin`), Routen mit
+   `adminMiddleware`, Audit-Ereignisse. userId wird gegen die users-Tabelle geprüft.
+2. **Frontend — Quelle umstellen + Dropdown:** `roster.js` bekommt für Admins ein Dropdown
+   „Eintragen für: Ich | <aktive Nutzer mit Namen>" (Quelle `GET /api/admin/users`); bei
+   Fremdauswahl legen „ganz/halb" über die Admin-Route an (sofort freigegeben), Einträge
+   der gewählten Person bekommen einen Entfernen-Knopf. Die Berechnung und alle
+   Monats-Reports holen die Dienste per `GET /api/roster?month=` (**nur `status
+   approved`**, Anteile/Name wie geliefert) statt aus dem Dokument-Store; zentraler
+   async-Helper, Datum als `T12:00:00`-Date. Der Tab „Dienste eintragen" wird ausgeblendet
+   (Code bleibt) — der Team-Plan ersetzt ihn.
+
+**Entscheidungen:** Nur `approved` zählt für Geld (pending ist Absicht, keine Zusage).
+Urlaubsmodus bleibt unverändert im Dokument-Store (per Name, Admin pflegt ihn in der
+Berechnungsansicht). Namen kommen aus `display_name` — dieselbe Quelle wie die
+Legacy-Migration, damit die Urlaubs-Map weiter greift.
+
+**Berührte Invarianten:** „user_id nur aus der Session" bleibt — die neue Admin-Route
+nimmt eine Ziel-userId als *Payload*, aber nur hinter `adminMiddleware` und mit
+Existenz-Check; der Handelnde bleibt `req.user.id` (Audit). Keine Schema-Änderung.
+
+**Akzeptanzkriterien:** (a) Admin wählt Mitarbeiter im Dropdown, klickt Tage an → Einträge
+erscheinen sofort als freigegeben im Plan; (b) Berechnung des Monats zeigt exakt die
+freigegebenen Team-Plan-Dienste (pending/rejected zählen nicht); (c) Nicht-Admins sehen
+kein Dropdown und können die Admin-Routen nicht aufrufen (403); (d) volle Suite grün.
+
+### Gate (Plan): opencode `mimo-v2.5-free`, 10 Findings — Urteile
+
+Geschickt: LEDGER.md (dieser Abschnitt), server/duties.js, server/index.js, roster.js, app.js.
+
+| # | Finding | Urteil |
+|---|---|---|
+| 1 | async-Umstellung ist Architekturänderung, nicht Einzeiler | **übernommen als Klarstellung** — genau dafür steht der zentrale async-Helper im Plan; alle 4 Aufrufer werden async |
+| 2 | Namens-Quellen (LocalStorage-Keys vs. display_name vs. E-Mail-Präfix) → Urlaubs-Lookup kann danebengreifen | **übernommen** — Berechnung und Urlaubs-Toggle nutzen künftig denselben Server-Namen (COALESCE); neue Invariante dokumentiert (s. #10) |
+| 3 | Admin-DELETE ohne Audit-Trail | **übernommen** — Audit-Ereignis mit betroffener user_id in der Route |
+| 4 | UNIQUE-Konflikt: Ziel-Nutzer hat pending-Dienst am Tag → 409 | **teilweise** — UI zeigt für die gewählte Person ihren bestehenden Eintrag (statt ganz/halb), 409-Meldung nennt den Grund; kein Auto-Reject (stiller Datenverlust) |
+| 5 | Dropdown zeigt E-Mails, solange display_name fehlt | **übernommen als Fallback** — Anzeige fällt auf E-Mail-Präfix zurück (wie der Aushang selbst) |
+| 6 | `loeschenDurchAdmin` existiert nicht | **verworfen** — der Ledger-Absatz listet die Funktion unter „Was gebaut wird", nicht als Bestand (Zitat: „Fachlogik in server/duties.js (anlegenDurchAdmin, loeschenDurchAdmin)") |
+| 7 | Transformation Roster-Array → calculateAllEmployees-Format verschwiegen | **übernommen implizit** — ist der Kern des Helpers |
+| 8 | Eintragen braucht Netz, kein Offline-Puffer | **übernommen als Doku** — bewusster Trade-off seit dem Team-Release („Server ist die Wahrheit") |
+| 9 | Doppelklick → mehrere 409-Toasts | **verworfen (ponytail)** — UNIQUE-Index fängt es serverseitig, ein Fehler-Toast ist akzeptabel; Spinner bei Bedarf nachrüsten |
+| 10 | Neue implizite Invariante „Berechnung korrekt nur mit gepflegtem display_name" | **übernommen** — Invariante: *Anzeigename ist der Berechnungs-Schlüssel; Quelle ist immer der Server-Name (COALESCE display_name, E-Mail-Präfix), nie eine lokale Liste* |
+
+### Story 1 (Server: Admin-Dienste) — umgesetzt, Suite 113/113 grün
+
+`anlegenDurchAdmin` (sofort approved, decided_by=Admin, Existenz-Check der Ziel-userId),
+`loeschenDurchAdmin` (jeder Status, liefert betroffene user_id), Routen
+`POST/DELETE /api/admin/duties` hinter `adminMiddleware` mit Audit
+(`admin_duty_create`/`admin_duty_delete`). TDD: 3 Logik- + 2 Routen-Tests zuerst rot.
+
+**Story-Review** opencode `mimo-v2.5-free` (geschickt: duties.js, index.js, beide Tests) — 6 Findings, alle verworfen mit Evidenz:
+
+| Finding | Urteil |
+|---|---|
+| Test-Lücke „anlegen nach anlegenDurchAdmin" | verworfen — UNIQUE-Index ist symmetrisch über (user_id,date), Richtung egal; Kritiker nannte es selbst „falsch-positiv, kein Bug" |
+| Guard gegen Löschen eigener approved-Dienste | verworfen — Löschen von Fehleinträgen IST das Feature; Audit-Trail existiert; der users-DELETE-Guard schützt Konten, nicht Einzeleinträge |
+| NaN-Validierung DELETE-Route | verworfen — `parseInt('abc')→NaN`, `get(NaN)→undefined→404`: gleiche, korrekte Semantik wie die bestehende `DELETE /api/duties/:id` seit v1.0; kein Exploit (Kritiker: „Glückstreffer… kein Bug") |
+| Test-Lücke „entscheiden auf Admin-Eintrag" | verworfen — identischer Codepfad (`status !== 'pending'` → ENTSCHEIDEN) bereits getestet in „entscheiden: … nicht zweimal" |
+| DOPPELT-Meldung irreführend | verworfen — „für diesen Tag ist bereits ein Dienst eingetragen" ist statusunabhängig korrekt |
+| share-Variation im UNIQUE-Test | verworfen — Index liegt auf (user_id,date), share ist dafür irrelevant; das testete SQLite, nicht unseren Code |

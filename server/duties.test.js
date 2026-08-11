@@ -125,6 +125,37 @@ test('monat: liefert Namen, filtert auf den Monat, enthaelt keinen Betrag', () =
   assert.ok(!/bonus|betrag|amount|euro/i.test(felder), `Betragsfeld im Aushang: ${felder}`);
 });
 
+// ── Admin traegt fuer andere ein / raeumt Fehleintraege ──────────────
+
+test('anlegenDurchAdmin: sofort approved, Entscheider gesetzt', () => {
+  const admin = neuerNutzer('adm4@x.de', 'Chef');
+  const uid = neuerNutzer('a8@x.de', 'Kollege');
+  const { id } = D.anlegenDurchAdmin({ adminId: admin, userId: uid, date: '2026-10-12', share: 0.5 });
+  const row = db.prepare('SELECT * FROM duties WHERE id=?').get(id);
+  assert.strictEqual(row.status, 'approved');
+  assert.strictEqual(row.user_id, uid);
+  assert.strictEqual(row.decided_by, admin);
+  assert.ok(row.decided_at, 'decided_at fehlt');
+});
+
+test('anlegenDurchAdmin: unbekannter Nutzer, Wertepruefung, Doppel-Tag', () => {
+  const admin = neuerNutzer('adm5@x.de', 'Chef2');
+  const uid = neuerNutzer('a9@x.de', 'Kollege2');
+  assert.throws(() => D.anlegenDurchAdmin({ adminId: admin, userId: 999999, date: '2026-10-13', share: 1 }), /NICHT_GEFUNDEN/);
+  assert.throws(() => D.anlegenDurchAdmin({ adminId: admin, userId: uid, date: '2026-10-13', share: 0.7 }), /UNGUELTIG/);
+  D.anlegen({ userId: uid, date: '2026-10-13', share: 1 });
+  assert.throws(() => D.anlegenDurchAdmin({ adminId: admin, userId: uid, date: '2026-10-13', share: 1 }), /DOPPELT/);
+});
+
+test('loeschenDurchAdmin: loescht auch entschiedene Dienste und meldet das betroffene Konto', () => {
+  const admin = neuerNutzer('adm6@x.de', 'Chef3');
+  const uid = neuerNutzer('a10@x.de', 'Kollege3');
+  const { id } = D.anlegenDurchAdmin({ adminId: admin, userId: uid, date: '2026-10-14', share: 1 });
+  assert.strictEqual(D.loeschenDurchAdmin({ id }), uid, 'muss die betroffene user_id fuers Audit liefern');
+  assert.strictEqual(db.prepare('SELECT COUNT(*) c FROM duties WHERE id=?').get(id).c, 0);
+  assert.throws(() => D.loeschenDurchAdmin({ id }), /NICHT_GEFUNDEN/);
+});
+
 test('monat: Name faellt auf den lokalen Teil der E-Mail zurueck', () => {
   const id = Number(db.prepare('INSERT INTO users (email,is_admin,created_at) VALUES (?,0,?)')
     .run('ohnename@x.de', new Date().toISOString()).lastInsertRowid);

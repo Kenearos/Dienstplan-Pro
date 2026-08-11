@@ -360,6 +360,28 @@ app.post('/api/duties/:id/decision', authMiddleware, adminMiddleware, (req, res)
   } catch (e) { fachFehlerAntwort(res, e); }
 });
 
+// Admin traegt fuer alle ein — der Team-Plan ersetzt das alte Eintragen.
+// Die Ziel-userId kommt hier bewusst aus dem Payload: nur hinter
+// adminMiddleware und mit Existenz-Check; der Handelnde bleibt req.user.id.
+app.post('/api/admin/duties', authMiddleware, adminMiddleware, (req, res) => {
+  const { userId, date, share } = req.body || {};
+  try {
+    const { id } = duties.anlegenDurchAdmin({
+      adminId: req.user.id, userId: parseInt(userId, 10), date, share,
+    });
+    audit('admin_duty_create', req.user.id, ipHashOf(req));
+    res.status(201).json({ id });
+  } catch (e) { fachFehlerAntwort(res, e); }
+});
+
+app.delete('/api/admin/duties/:id', authMiddleware, adminMiddleware, (req, res) => {
+  try {
+    duties.loeschenDurchAdmin({ id: parseInt(req.params.id, 10) });
+    audit('admin_duty_delete', req.user.id, ipHashOf(req));
+    res.json({ ok: true });
+  } catch (e) { fachFehlerAntwort(res, e); }
+});
+
 app.use(express.static(path.join(__dirname, '..')));
 
 if (require.main === module) {

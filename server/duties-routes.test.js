@@ -153,6 +153,51 @@ test('decision ueber eigenen Dienst wird als self_decision geloggt', async () =>
   });
 });
 
+// ── Admin traegt fuer alle ein (Team-Plan ersetzt Dienste-eintragen) ─
+
+test('POST /api/admin/duties: Nicht-Admin 403; Admin 201 -> approved fuer Zielkonto + Audit', async () => {
+  const admin = seedUser('r15@x.de', 1, 'Chef2');
+  const ziel = seedUser('r16@x.de', 0, 'Ziel');
+  await withServer(async (port) => {
+    const cz = await anmelden(port, ziel);
+    let r = await req(port, '/api/admin/duties', mit(cz, { method: 'POST', ...json({ userId: admin, date: '2027-08-01', share: 1 }) }));
+    assert.strictEqual(r.status, 403);
+
+    const ca = await anmelden(port, admin);
+    r = await req(port, '/api/admin/duties', mit(ca, { method: 'POST', ...json({ userId: ziel, date: '2027-08-01', share: 1 }) }));
+    assert.strictEqual(r.status, 201);
+    const { id } = await r.json();
+    const row = db.prepare('SELECT * FROM duties WHERE id=?').get(id);
+    assert.strictEqual(row.user_id, ziel, 'Dienst muss am Zielkonto haengen');
+    assert.strictEqual(row.status, 'approved', 'Admin-Eintrag ist sofort freigegeben');
+    assert.strictEqual(row.decided_by, admin);
+    assert.strictEqual(db.prepare("SELECT COUNT(*) c FROM audit_log WHERE event='admin_duty_create'").get().c, 1);
+
+    r = await req(port, '/api/admin/duties', mit(ca, { method: 'POST', ...json({ userId: 999999, date: '2027-08-02', share: 1 }) }));
+    assert.strictEqual(r.status, 404, 'unbekanntes Zielkonto');
+  });
+});
+
+test('DELETE /api/admin/duties/:id: Nicht-Admin 403; Admin loescht entschiedenen Dienst + Audit', async () => {
+  const admin = seedUser('r17@x.de', 1, 'Chef3');
+  const ziel = seedUser('r18@x.de', 0, 'Ziel2');
+  await withServer(async (port) => {
+    const ca = await anmelden(port, admin);
+    const cz = await anmelden(port, ziel);
+    let r = await req(port, '/api/admin/duties', mit(ca, { method: 'POST', ...json({ userId: ziel, date: '2027-08-03', share: 1 }) }));
+    const { id } = await r.json();
+
+    r = await req(port, `/api/admin/duties/${id}`, mit(cz, { method: 'DELETE' }));
+    assert.strictEqual(r.status, 403);
+    r = await req(port, `/api/admin/duties/${id}`, mit(ca, { method: 'DELETE' }));
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(db.prepare('SELECT COUNT(*) c FROM duties WHERE id=?').get(id).c, 0);
+    assert.strictEqual(db.prepare("SELECT COUNT(*) c FROM audit_log WHERE event='admin_duty_delete'").get().c, 1);
+    r = await req(port, `/api/admin/duties/${id}`, mit(ca, { method: 'DELETE' }));
+    assert.strictEqual(r.status, 404, 'geloeschte ID ist weg');
+  });
+});
+
 // ── Task 4: Ausscheiden statt Loeschen ───────────────────────────────
 
 test('Konto mit Diensten laesst sich nicht loeschen, nur deaktivieren', async () => {
