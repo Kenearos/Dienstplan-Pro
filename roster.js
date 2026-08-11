@@ -153,6 +153,10 @@ const Roster = {
     if (this.ich && this.ich.isAdmin && e.status === 'pending') {
       span.appendChild(this.knopf('✓', 'roster-ja', () => this.entscheiden(e.id, 'approved')));
       span.appendChild(this.knopf('✕', 'roster-nein', () => this.entscheiden(e.id, 'rejected')));
+    } else if (this.ich && this.ich.isAdmin && e.status === 'approved') {
+      // Nachtraeglich rausnehmen, ohne Dropdown-Umweg — Dienste sind
+      // Verguetungsgrundlage, deshalb mit Rueckfrage.
+      span.appendChild(this.knopf('✕', 'roster-nein', () => this.entfernenMitRueckfrage(e)));
     }
     return span;
   },
@@ -191,7 +195,8 @@ const Roster = {
     const td = document.createElement('td');
     const seiner = eintraege.find((e) => e.userId === this.fuer && e.status !== 'rejected');
     if (seiner) {
-      td.appendChild(this.knopf('entfernen', 'btn btn-small btn-secondary', () => this.entfernen(seiner.id)));
+      td.appendChild(this.knopf('entfernen', 'btn btn-small btn-secondary',
+        () => this.entfernenMitRueckfrage(seiner)));
       return td;
     }
     td.appendChild(this.knopf('ganz', 'btn btn-small btn-primary', () => this.eintragenFuer(tag, 1)));
@@ -247,6 +252,11 @@ const Roster = {
 
   entfernen(id) {
     return this.schicken(`/api/admin/duties/${id}`, { method: 'DELETE' }, 'Entfernt.');
+  },
+
+  entfernenMitRueckfrage(e) {
+    const tag = new Date(`${e.date}T12:00:00`).toLocaleDateString('de-DE');
+    if (confirm(`Dienst von ${e.name} am ${tag} entfernen?`)) this.entfernen(e.id);
   },
 
   entscheiden(id, status) {

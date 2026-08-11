@@ -357,3 +357,30 @@ app.js, index.html, sw.js, roster.test.js) — 8 Findings:
 2026-08-08). (3) Deploy: Vor dem Rollout `display_name` für alle Konten prüfen und
 Alt-Dienste ggf. per `/api/admin/migrate-legacy` übernehmen — die Berechnung sieht nur
 noch die duties-Tabelle.
+
+## Kleinänderung: Admin nimmt einzelne Dienste direkt in der Zeile raus (2026-08-11)
+
+**Was/Warum (Benutzer):** „kann einzelne dienste raus nehmen nachträglich wieder bei MA" —
+auch freigegebene Dienste sollen sich ohne Dropdown-Umweg direkt im Aushang entfernen
+lassen. Bisher zeigt `person()` Admin-Knöpfe (✓/✕) nur bei `pending`.
+
+**Umsetzung:** In `roster.js` `person()`: für Admins bekommt ein `approved`-Eintrag einen
+✕-Knopf → `entfernen(id)` (bestehende, getestete Route `DELETE /api/admin/duties/:id`),
+davor natives `confirm()` (Dienste sind Vergütungsgrundlage). SW-Bump v15.
+
+**Berührte Invarianten:** keine — reine UI-Verdrahtung auf eine bestehende Admin-Route.
+
+**Akzeptanzkriterium (nicht unit-testbar, DOM):** Admin sieht am freigegebenen Eintrag in
+„Besetzt durch" ein ✕, Klick + Bestätigung entfernt den Dienst aus Plan und Berechnung;
+Nicht-Admins sehen kein ✕ (gleiche Bedingung wie die bestehenden ✓/✕). Echte Verifikation
+per Browser-E2E.
+
+**Gate (kombiniert, opencode `mimo-v2.5-free`; geschickt: roster.js, sw.js, Ledger-Absatz):**
+5 Findings — 2 übernommen: `fremdSpalte` bekam dieselbe Rückfrage (Konsistenz) und die
+Rückfrage nennt jetzt das Datum (`entfernenMitRueckfrage`, ein gemeinsamer Helfer).
+2 verworfen: Selbst-Löschung des Admins ist beabsichtigt (kleines Team, analog zur
+erlaubten `self_decision`; Audit greift) · Doppelklick-Race endet serverseitig als 404
+mit Toast, kein Datenverlust. 1 = „alles sauber" (Route/SW).
+
+**Verifikation:** Browser-E2E real — ✕ am freigegebenen Eintrag in „Besetzt durch",
+confirm-Dialog, Eintrag aus Plan und `/api/roster` verschwunden. Node-Suite 115/115.
