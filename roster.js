@@ -13,6 +13,18 @@ const Roster = {
   ich: null,          // { id, email, isAdmin }
   monat: null,        // 'YYYY-MM'
   eintraege: [],
+  fuer: null,         // Admin traegt fuer diese userId ein; null = Ich-Modus
+
+  // Reine Abbildung fuers Rechenwerk: nur freigegebene Dienste zaehlen,
+  // gruppiert nach Server-Namen, Datum als Mittags-Date (Zeitzonen-Kanten).
+  zuBerechnung(rows) {
+    const proName = {};
+    for (const e of rows) {
+      if (e.status !== 'approved') continue;
+      (proName[e.name] ||= []).push({ date: new Date(`${e.date}T12:00:00`), share: e.share });
+    }
+    return proName;
+  },
 
   async init() {
     const jetzt = new Date();
@@ -26,7 +38,31 @@ const Roster = {
       const r = await fetch('/api/auth/me', { credentials: 'include' });
       if (r.ok) this.ich = await r.json();
     } catch { /* offline: dann bleibt es beim Nur-Lesen */ }
+    if (this.ich && this.ich.isAdmin) await this.adminAuswahl();
     await this.laden();
+  },
+
+  // Admin-Dropdown „Eintragen für": der Team-Plan ersetzt das alte Eintragen.
+  async adminAuswahl() {
+    const select = document.getElementById('roster-fuer');
+    if (!select) return;
+    try {
+      const r = await fetch('/api/admin/users', { credentials: 'include' });
+      if (!r.ok) return;
+      const { users } = await r.json();
+      for (const u of users.filter((x) => x.active)) {
+        const o = document.createElement('option');
+        o.value = String(u.id);
+        o.textContent = u.name || u.email.split('@')[0];
+        select.appendChild(o);
+      }
+      select.hidden = false;
+      document.querySelector('label[for="roster-fuer"]').hidden = false;
+      select.addEventListener('change', () => {
+        this.fuer = select.value ? Number(select.value) : null;
+        this.zeichnen();
+      });
+    } catch { /* ohne Netz kein Admin-Modus */ }
   },
 
   async laden() {
@@ -57,7 +93,7 @@ const Roster = {
 
     const tabelle = document.createElement('table');
     tabelle.className = 'roster-table';
-    tabelle.innerHTML = '<thead><tr><th>Tag</th><th>Besetzt durch</th><th>Ich</th></tr></thead>';
+    tabelle.innerHTML = `<thead><tr><th>Tag</th><th>Besetzt durch</th><th>${this.fuer ? 'Eintragen' : 'Ich'}</th></tr></thead>`;
     const body = document.createElement('tbody');
 
     for (const tag of this.tageDesMonats()) {
@@ -95,7 +131,9 @@ const Roster = {
       }
       tr.appendChild(tdWer);
 
-      tr.appendChild(this.eigeneSpalte(tag, meiner, summe));
+      tr.appendChild(this.fuer && this.ich && this.ich.isAdmin
+        ? this.fremdSpalte(tag, eintraege)
+        : this.eigeneSpalte(tag, meiner, summe));
       body.appendChild(tr);
     }
 
@@ -147,6 +185,20 @@ const Roster = {
     return td;
   },
 
+  // Admin-Modus: bestehender Eintrag der gewaehlten Person laesst sich
+  // entfernen (auch freigegebene Fehleintraege), freie Tage direkt belegen.
+  fremdSpalte(tag, eintraege) {
+    const td = document.createElement('td');
+    const seiner = eintraege.find((e) => e.userId === this.fuer && e.status !== 'rejected');
+    if (seiner) {
+      td.appendChild(this.knopf('entfernen', 'btn btn-small btn-secondary', () => this.entfernen(seiner.id)));
+      return td;
+    }
+    td.appendChild(this.knopf('ganz', 'btn btn-small btn-primary', () => this.eintragenFuer(tag, 1)));
+    td.appendChild(this.knopf('halb', 'btn btn-small btn-secondary', () => this.eintragenFuer(tag, 0.5)));
+    return td;
+  },
+
   knopf(text, klasse, fn) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -185,6 +237,18 @@ const Roster = {
     return this.schicken(`/api/duties/${id}`, { method: 'DELETE' }, 'Zurückgezogen.');
   },
 
+  eintragenFuer(date, share) {
+    return this.schicken('/api/admin/duties', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: this.fuer, date, share }),
+    }, 'Eingetragen und freigegeben.');
+  },
+
+  entfernen(id) {
+    return this.schicken(`/api/admin/duties/${id}`, { method: 'DELETE' }, 'Entfernt.');
+  },
+
   entscheiden(id, status) {
     return this.schicken(`/api/duties/${id}/decision`, {
       method: 'POST',
@@ -194,7 +258,10 @@ const Roster = {
   },
 };
 
-window.Roster = Roster;
-document.addEventListener('DOMContentLoaded', () => {
-  if (document.getElementById('roster-table')) Roster.init();
-});
+if (typeof module !== 'undefined' && module.exports) module.exports = Roster;
+if (typeof window !== 'undefined') {
+  window.Roster = Roster;
+  document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('roster-table')) Roster.init();
+  });
+}

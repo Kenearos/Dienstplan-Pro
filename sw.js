@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = 'dienstplan-pro-v13';
+﻿const CACHE_NAME = 'dienstplan-pro-v14';
 const ASSETS = [
   './',
   './index.html',

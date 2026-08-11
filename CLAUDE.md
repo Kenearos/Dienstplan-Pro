@@ -116,10 +116,21 @@ STORAGE_KEY_DUTIES = 'dienstplan_duties'        // Nested duty object
 ## UI Structure
 
 The app uses a tab-based interface with 4 sections:
-1. **Dienste eintragen** (Enter Duties) - Add/remove shifts
-2. **Berechnung** (Calculation) - Calculate and view bonuses
-3. **Mitarbeiter verwalten** (Manage Employees) - CRUD for employees
+1. **Team-Plan** (default) - Aushang zum Reinklicken; **ersetzt seit 2026-08 das alte
+   „Dienste eintragen"**. Admins haben ein „Eintragen für"-Dropdown und legen Dienste
+   für beliebige Nutzer direkt freigegeben an (`POST /api/admin/duties`) bzw. entfernen
+   sie (`DELETE /api/admin/duties/:id`).
+2. **Berechnung** (Calculation) - holt die Dienste des Monats aus dem Team-Plan
+   (`GET /api/roster`, **nur `status=approved`**, via `Roster.zuBerechnung`) — nicht mehr
+   aus dem LocalStorage-Dokument-Store. Gilt auch für CSV-/Report-/E-Mail-Exporte.
+   Urlaubs-Flags bleiben im Dokument-Store, keyed by Server-Anzeigename.
+3. **Mitarbeiter verwalten** (Manage Employees) - CRUD for employees (legacy list)
 4. **Einstellungen** (Settings) - Export/import, rules info, data clearing
+
+Der alte Tab „Dienste eintragen" (`#tab-duties`) existiert im Markup weiter, hat aber
+keinen Navigations-Knopf mehr. **Invariante:** Der Anzeigename (`COALESCE(display_name,
+E-Mail-Präfix)`) ist der Berechnungs-Schlüssel — Quelle ist immer der Server, nie eine
+lokale Liste.
 
 ### Toast Notifications
 

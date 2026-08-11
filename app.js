@@ -22,7 +22,7 @@ class DienstplanApp {
         this.setCurrentMonthYear();
         this.loadEmployeeSelects();
         this.loadEmployeeList();
-        this.switchTab('duties');
+        this.switchTab('roster');
     }
 
     /**
@@ -439,9 +439,25 @@ class DienstplanApp {
     }
 
     /**
+     * Dienste des Monats aus dem Team-Plan (Server) holen — nur freigegebene.
+     * Der Team-Plan ist die Berechnungsquelle; der alte Dokument-Store nicht mehr.
+     */
+    async holeTeamDienste(year, month) {
+        const m = `${year}-${String(month).padStart(2, '0')}`;
+        try {
+            const r = await fetch(`/api/roster?month=${m}`, { credentials: 'include' });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return Roster.zuBerechnung((await r.json()).duties);
+        } catch {
+            this.showToast('Team-Plan nicht erreichbar — die Berechnung braucht Netz.', 'error');
+            return null;
+        }
+    }
+
+    /**
      * Calculate bonuses for all employees
      */
-    calculateBonuses() {
+    async calculateBonuses() {
         const monthSelect = document.getElementById('calc-month-select');
         const yearSelect = document.getElementById('calc-year-select');
         const resultsContainer = document.getElementById('calculation-results');
@@ -450,7 +466,8 @@ class DienstplanApp {
         const year = parseInt(yearSelect.value);
         const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
 
-        const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
+        const employeeDuties = await this.holeTeamDienste(year, month);
+        if (!employeeDuties) return;
 
         const vacationMap = this.storage.getVacationMapForMonth(yearMonth);
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
@@ -605,14 +622,15 @@ class DienstplanApp {
     }
 
     // --- NEW: EMAIL REPORT GENERATOR ---
-    generateEmailReport() {
+    async generateEmailReport() {
         // Need to grab current selected calc month/year
         const monthSelect = document.getElementById('calc-month-select');
         const yearSelect = document.getElementById('calc-year-select');
         const month = parseInt(monthSelect.value);
         const year = parseInt(yearSelect.value);
 
-        const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
+        const employeeDuties = await this.holeTeamDienste(year, month);
+        if (!employeeDuties) return;
         const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
         const vacationMap = this.storage.getVacationMapForMonth(yearMonth);
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
@@ -748,10 +766,13 @@ class DienstplanApp {
      * Export data as CSV (Excel-compatible) - Beginner-friendly format
      * Exports all duties and monthly summary for the selected month
      */
-    exportCSV() {
+    async exportCSV() {
 
         const month = parseInt(document.getElementById('calc-month-select').value);
         const year = parseInt(document.getElementById('calc-year-select').value);
+
+        const employeeDuties = await this.holeTeamDienste(year, month);
+        if (!employeeDuties) return;
         
         // Helper function to escape CSV values (handles semicolons, quotes, newlines)
         const escapeCSV = (value) => {
@@ -769,19 +790,10 @@ class DienstplanApp {
         csv += `DIENSTE ${monthName(month)} ${year}\n`;
         csv += 'Datum;Wochentag;Mitarbeiter;Anteil;Tagestyp\n';
         
-        const employees = this.storage.getEmployees();
         const allDuties = [];
-        
-        // Collect all duties for the selected month from all employees
-        employees.forEach(employee => {
-            const duties = this.storage.getDutiesForMonth(employee, year, month);
-            duties.forEach(duty => {
-                allDuties.push({
-                    ...duty,
-                    employee: employee
-                });
-            });
-        });
+        for (const [employee, duties] of Object.entries(employeeDuties)) {
+            duties.forEach(duty => allDuties.push({ ...duty, employee }));
+        }
         
         // Sort by date
         allDuties.sort((a, b) => a.date - b.date);
@@ -802,7 +814,6 @@ class DienstplanApp {
         csv += 'Mitarbeiter;Urlaub;Sieger-Variante;Fr;Sa;So;Werktage;Eligible;Abzug Fr;Abzug Sa;Abzug So;Abzug WT;Bonus (EUR)\n';
 
         const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
-        const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
         const vacationMap = this.storage.getVacationMapForMonth(yearMonth);
         const results = this.calculator.calculateAllEmployees(employeeDuties, vacationMap);
 
@@ -856,16 +867,17 @@ class DienstplanApp {
      * Export a formal bonus report in HTML format
      * Opens in a new window for printing or saving as PDF
      */
-    exportBonusReport() {
+    async exportBonusReport() {
 
         const month = parseInt(document.getElementById('calc-month-select').value);
         const year = parseInt(document.getElementById('calc-year-select').value);
-        
+
         // Calculate next month for payout date
         const payoutMonth = month % 12;
         const payoutYear = month === 12 ? year + 1 : year;
-        
-        const employeeDuties = this.storage.getAllEmployeeDutiesForMonth(year, month);
+
+        const employeeDuties = await this.holeTeamDienste(year, month);
+        if (!employeeDuties) return;
         const employees = Object.keys(employeeDuties);
         
         if (employees.length === 0) {

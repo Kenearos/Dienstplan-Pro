@@ -315,9 +315,11 @@ class DataStorage {
      * @param {string} yearMonth - format "YYYY-MM"
      */
     getVacationMapForMonth(yearMonth) {
+        // Aus den Urlaubs-Daten selbst, nicht aus der Legacy-Mitarbeiterliste —
+        // die Berechnung kennt seit dem Team-Plan Namen, die dort nie standen.
         const map = {};
-        for (const name of this.getEmployees()) {
-            map[name] = this.getVacationMode(name, yearMonth);
+        for (const [name, monate] of Object.entries(this.getAllVacationModes())) {
+            map[name] = Boolean(monate && monate[yearMonth]);
         }
         return map;
     }

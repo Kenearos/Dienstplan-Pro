@@ -418,6 +418,17 @@ runner.test('Storage: setVacationMode kann zurueckgesetzt werden', (t) => {
     t.assertFalse(storage.getVacationMode('Max Mustermann', '2025-11'), 'wieder false');
 });
 
+runner.test('Storage: getVacationMapForMonth kennt auch Team-Plan-Namen ohne Legacy-Eintrag', (t) => {
+    const storage = new DataStorage();
+    storage.clearAll();
+    // "Alsholi" steht NICHT in der Mitarbeiterliste — seit dem Team-Plan kommen
+    // Namen vom Server; der Urlaubs-Toggle muss trotzdem greifen.
+    storage.setVacationMode('Alsholi', '2026-08', true);
+    const map = storage.getVacationMapForMonth('2026-08');
+    t.assertTrue(map['Alsholi'] === true, 'Urlaub muss ohne Legacy-Listeneintrag greifen');
+    t.assertFalse(Boolean(storage.getVacationMapForMonth('2026-09')['Alsholi']), 'anderer Monat = false');
+});
+
 runner.test('Storage: Export enthaelt dienstplan_vacation', (t) => {
     const storage = new DataStorage();
     storage.clearAll();

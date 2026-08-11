@@ -315,3 +315,45 @@ Geschickt: LEDGER.md (dieser Abschnitt), server/duties.js, server/index.js, rost
 | Test-Lücke „entscheiden auf Admin-Eintrag" | verworfen — identischer Codepfad (`status !== 'pending'` → ENTSCHEIDEN) bereits getestet in „entscheiden: … nicht zweimal" |
 | DOPPELT-Meldung irreführend | verworfen — „für diesen Tag ist bereits ein Dienst eingetragen" ist statusunabhängig korrekt |
 | share-Variation im UNIQUE-Test | verworfen — Index liegt auf (user_id,date), share ist dafür irrelevant; das testete SQLite, nicht unseren Code |
+
+### Story 2 (Frontend: Team-Plan wird Quelle + Admin-Dropdown) — umgesetzt
+
+- `roster.js`: `zuBerechnung(rows)` (pur, node-getestet: nur approved, T12-Dates),
+  Admin-Dropdown „Eintragen für" (aktive Nutzer aus `/api/admin/users`, Fallback
+  E-Mail-Präfix), `fremdSpalte` (bestehender Eintrag → Entfernen-Knopf, frei → ganz/halb
+  über die Admin-Route), Node-Export-Guards.
+- `app.js`: zentraler async-Helper `holeTeamDienste(year, month)`; `calculateBonuses`,
+  `generateEmailReport`, `exportCSV`, `exportBonusReport` lesen den Team-Plan; Start-Tab
+  ist `roster`.
+- `index.html`: Tab-Knopf „Dienste eintragen" entfernt (Markup bleibt), Dropdown-Markup.
+- `sw.js`: Cache-Bump v14 (ohne Bump serviert der SW die alte App — real getroffen im E2E).
+- **Fix aus dem Review:** `storage.getVacationMapForMonth` baut die Map jetzt aus den
+  Urlaubs-Daten selbst statt aus der Legacy-Mitarbeiterliste — sonst hätte der
+  Urlaubsmodus für Team-Plan-Namen nie gegriffen (Geldbezug). Browser-Test rot→grün.
+
+**Verifikation:** Suite node 115/115 + Browser 121/121 grün. E2E real (Playwright gegen
+lokalen Server, Magic-Link-Login): Admin wählt „Alsholi" im Dropdown, klickt Sa 1./So 2./
+Mo 3./Di 4. an → sofort approved im Plan; Berechnung August 2026 zeigt exakt diese
+Dienste (Sa 1,0 / So 1,0 / WT 2,0 → Variante 3, 500 €); Entfernen räumt den Eintrag.
+403-Verhalten für Nicht-Admins durch Routen-Tests belegt.
+
+**Story-Review + Gate 3 (Security-Linse)** opencode `mimo-v2.5-free` (geschickt: roster.js,
+app.js, index.html, sw.js, roster.test.js) — 8 Findings:
+
+| Finding | Urteil |
+|---|---|
+| Urlaubs-Map aus Legacy-Liste → greift für Server-Namen nicht | **übernommen und gefixt** (s. o., Test rot→grün) |
+| XSS: Namen unescaped in innerHTML (`loadEmployeeList` onclick, `createResultCard`, E-Mail-Report) | **teilweise / vertagt** — vorbestehende Muster, nicht von dieser Story eingeführt; Namen setzt ausschließlich der Admin (auth-geschützt). Als offener Punkt notiert, Fix = `escapeHtml` an den Render-Stellen |
+| `onVacationToggle` ohne await | verworfen — `setVacationMode` ist synchron (try/catch greift), `calculateBonuses` behandelt Fehler intern per Toast |
+| `fremdSpalte` ohne eigenen Admin-Check | verworfen — Aufruf nur hinter `this.fuer && this.ich.isAdmin` (roster.js, zeichnen); `fuer` kann ohne Admin-Dropdown nie gesetzt sein; Server erzwingt 403 |
+| Race bei schnellem Urlaubs-Toggle | verworfen (ponytail) — Ein-Admin-Nutzung, letzter Lauf gewinnt, kein Datenverlust (Flag liegt im Storage) |
+| Versteckter `tab-duties`-Codepfad | verworfen — bewusst („Code bleibt für den Notfall", HTML-Kommentar) |
+| SW-Cache-Semantik | kein Finding — `skipWaiting` vorhanden, Bump gemacht |
+| innerHTML-Header mit Ternary | verworfen — nur String-Literale, kein Nutzerinput |
+
+**Offene Punkte:** (1) XSS-Härtung der Namens-Render-Stellen (`escapeHtml` in
+`createResultCard`, `loadEmployeeList`, E-Mail-Report) — separater kleiner Fix.
+(2) graphify-Rebuild steht weiter aus (kein funktionierendes Backend, s. Eintrag
+2026-08-08). (3) Deploy: Vor dem Rollout `display_name` für alle Konten prüfen und
+Alt-Dienste ggf. per `/api/admin/migrate-legacy` übernehmen — die Berechnung sieht nur
+noch die duties-Tabelle.
